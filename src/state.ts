@@ -23,7 +23,12 @@ export const spellsOf = (m: Member) =>
   CLASSES[m.cls].spells.filter(([, l]) => m.lvl >= l).map(([s]) => s);
 export const xpNeed = (l: number) => l * l * 45;
 
+let saveEnabled = true;
+/** Guests mirror the host's state and must never clobber their own local save. */
+export function setSaveEnabled(b: boolean): void { saveEnabled = b; }
+
 export function save(): void {
+  if (!saveEnabled) return;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch { /* private mode */ }
 }
 export function loadSave(): GameState | null {

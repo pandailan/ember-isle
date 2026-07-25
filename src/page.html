@@ -39,6 +39,10 @@
     border-radius:6px; padding:12px 16px; min-height:48px; cursor:pointer;
     font-variant:small-caps; letter-spacing:.08em;}
   button:active{background:#2e2110; border-color:var(--amber); color:var(--amber);}
+  input#join-code{font-family:var(--mono); font-size:1.1rem; letter-spacing:.3em; text-transform:uppercase;
+    width:7.5rem; text-align:center; color:var(--amber); background:var(--panel);
+    border:1px solid var(--line); border-radius:6px; padding:10px 6px;}
+  input#join-code::placeholder{color:var(--parch-dim); opacity:.5;}
   button:disabled{opacity:.38; pointer-events:none;}
   button.primary{border-color:var(--amber); color:var(--amber);}
   button.danger{border-color:#6b3020; color:#d98a6a;}
@@ -140,7 +144,12 @@
       <button class="primary" id="bt-new">New Expedition</button>
       <button id="bt-continue" style="display:none;">Continue</button>
     </div>
-    <p class="dim" style="font-size:.78rem; text-align:center;">Runs entirely in your browser · progress is saved on this device</p>
+    <div class="btnrow">
+      <input id="join-code" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters">
+      <button id="bt-join">Join a Friend</button>
+    </div>
+    <p class="dim" id="join-status" style="font-size:.85rem; text-align:center; min-height:1.2em;"></p>
+    <p class="dim" style="font-size:.78rem; text-align:center;">Runs entirely in your browser · progress is saved on this device<br>Co-op: the host lights the Signal Fire in town and shares its code</p>
   </div>
 
   <!-- TAVERN / PARTY SELECT -->

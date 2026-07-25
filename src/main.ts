@@ -1,4 +1,4 @@
-import type { Member, EnemyInst, CombatState, PlayerCmd, Dir } from "./types";
+import type { Member, EnemyInst, CombatState, PlayerCmd, Dir, GameState } from "./types";
 import {
   CLASSES, SPELLS, ROSTER, ENEMIES, GROUPS, MAPS, CHESTS,
   WBONUS, WCOST, WNAME, ABONUS, ACOST, ANAME,
@@ -6,20 +6,23 @@ import {
 } from "./data";
 import {
   state, setState, newMember, newState, atkOf, defOf, alive, spellsOf, xpNeed,
-  save, loadSave, cellAt, markVisited,
+  save, loadSave, cellAt, markVisited, setSaveEnabled,
 } from "./state";
 import { view, amap, renderView, drawMonster } from "./render";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
+import { net, type NetMsg } from "./net";
 
 let combat: CombatState = null as unknown as CombatState;
 let choiceResolve: ((v: unknown) => void) | null = null;
 let logLines: string[] = [];
 let flickerTimer: ReturnType<typeof setInterval> | null = null;
+let currentScreen = "scr-title";
 
 /* ============================== ROUTER ============================== */
 function show(id: string): void {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("on"));
   $(id).classList.add("on");
+  currentScreen = id;
 }
 
 /* ============================== TITLE ============================== */
@@ -93,6 +96,9 @@ function openTown(msg?: string): void {
     ["Temple of the Tide", "raise the fallen", () => openTemple()],
     ["The Old Stair", "descend into the caves", () => enterDungeon(true)],
     ["The Harbor", state.heart ? "a ship waits" : "no ship will sail", townHarbor],
+    ["The Signal Fire",
+      net.role === "host" ? (net.connected ? "companion linked" : `code ${net.code} — waiting`) : "invite a friend (co-op)",
+      townSignal],
   ];
   for (const [t, h, fn] of opts) {
     const b = document.createElement("button");
@@ -106,6 +112,19 @@ function townRest(): void {
   state.gold -= 12;
   for (const m of state.party) { if (!m.down) { m.hp = m.maxhp; m.mp = m.maxmp; } }
   save(); openTown("Hot stew, a real bed, and no dreams. The living wake restored.");
+}
+function townSignal(): void {
+  if (net.role === "host") {
+    $("town-msg").textContent = net.connected
+      ? "The fire burns steady. Your companion walks with you."
+      : `The fire is lit — share the code ${net.code}. On another device, choose “Join a Friend” on the title screen.`;
+    return;
+  }
+  $("town-msg").textContent = "You stack driftwood and strike flint…";
+  net.host((codeOrErr, ok) => {
+    if (ok) openTown(`The signal fire burns. Share the code ${codeOrErr} — a friend can now Join from their title screen while you play. They'll command your rear two adventurers in battle.`);
+    else openTown("The fire gutters out — the far shore does not answer. (Co-op needs an internet connection.)");
+  });
 }
 function townHarbor(): void {
   if (state.heart) { showEnding(); }
@@ -170,11 +189,14 @@ function openTemple(msg?: string): void {
 }
 
 /* ============================== DUNGEON ============================== */
-function dlog(msg: string): void {
-  logLines.push(msg); if (logLines.length > 3) logLines.shift();
+function redrawLog(): void {
   $("log").innerHTML = logLines
     .map((l, i) => i < logLines.length - 1 ? `<div class="old">${l}</div>` : `<div>${l}</div>`)
     .join("");
+}
+function dlog(msg: string): void {
+  logLines.push(msg); if (logLines.length > 3) logLines.shift();
+  redrawLog();
 }
 function enterDungeon(fresh: boolean): void {
   state.inDungeon = true;
@@ -259,20 +281,35 @@ function usePotionField(): void {
   dlog(`${worst.name} drinks a potion. (+35 HP · ${state.potions} left)`);
   renderPlaques("dg-plaques"); save();
 }
+// Guests steer through the host: inputs travel the link, moves come back as synced state.
+function doTurn(d: number): void {
+  if (net.role === "guest") net.send({t: "input", a: d < 0 ? "left" : "right"});
+  else turn(d);
+}
+function doStep(back: boolean): void {
+  if (net.role === "guest") net.send({t: "input", a: back ? "back" : "fwd"});
+  else step(back);
+}
 function bindDungeonControls(): void {
-  $("bt-left").onclick = () => turn(-1);
-  $("bt-right").onclick = () => turn(1);
-  $("bt-fwd").onclick = () => step(false);
-  $("bt-back").onclick = () => step(true);
+  $("bt-left").onclick = () => doTurn(-1);
+  $("bt-right").onclick = () => doTurn(1);
+  $("bt-fwd").onclick = () => doStep(false);
+  $("bt-back").onclick = () => doStep(true);
   $("bt-map").onclick = () => { amap.classList.toggle("on"); renderView(); };
-  $("bt-potion").onclick = usePotionField;
-  $("bt-save").onclick = () => { save(); dlog("You scratch your progress into the map. (Saved.)"); };
+  $("bt-potion").onclick = () => {
+    if (net.role === "guest") net.send({t: "input", a: "potion"});
+    else usePotionField();
+  };
+  $("bt-save").onclick = () => {
+    if (net.role === "guest") { dlog("Only the torchbearer keeps the map. (Your host saves.)"); return; }
+    save(); dlog("You scratch your progress into the map. (Saved.)");
+  };
   document.addEventListener("keydown", (e: KeyboardEvent) => {
     if (!$("scr-dungeon").classList.contains("on")) return;
-    if (e.key === "ArrowUp" || e.key === "w") step(false);
-    else if (e.key === "ArrowDown" || e.key === "s") step(true);
-    else if (e.key === "ArrowLeft" || e.key === "a") turn(-1);
-    else if (e.key === "ArrowRight" || e.key === "d") turn(1);
+    if (e.key === "ArrowUp" || e.key === "w") doStep(false);
+    else if (e.key === "ArrowDown" || e.key === "s") doStep(true);
+    else if (e.key === "ArrowLeft" || e.key === "a") doTurn(-1);
+    else if (e.key === "ArrowRight" || e.key === "d") doTurn(1);
     else if (e.key === "m") $("bt-map").click();
   });
   // swipe on the viewport
@@ -281,30 +318,33 @@ function bindDungeonControls(): void {
   view.addEventListener("touchend", e => {
     const dx = e.changedTouches[0].clientX - tsx, dy = e.changedTouches[0].clientY - tsy;
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
-    if (Math.abs(dx) > Math.abs(dy)) turn(dx > 0 ? 1 : -1); else step(dy > 0);
+    if (Math.abs(dx) > Math.abs(dy)) doTurn(dx > 0 ? 1 : -1); else doStep(dy > 0);
   }, {passive: true});
 }
 
 /* ============================== COMBAT ============================== */
-function clog(msg: string): void {
-  const el = $("combat-log");
-  combat.log.push(msg); if (combat.log.length > 4) combat.log.shift();
-  el.innerHTML = combat.log
-    .map((l, i) => i < combat.log.length - 1 ? `<div class="old" style="color:var(--parch-dim)">${l}</div>` : `<div>${l}</div>`)
+function redrawCombatLog(lines: string[]): void {
+  $("combat-log").innerHTML = lines
+    .map((l, i) => i < lines.length - 1 ? `<div class="old" style="color:var(--parch-dim)">${l}</div>` : `<div>${l}</div>`)
     .join("");
 }
-function renderFoes(): void {
-  $("foes").innerHTML = combat.enemies.map(e => `
+function clog(msg: string): void {
+  combat.log.push(msg); if (combat.log.length > 4) combat.log.shift();
+  redrawCombatLog(combat.log);
+}
+function renderFoesData(enemies: EnemyInst[]): void {
+  $("foes").innerHTML = enemies.map(e => `
     <div class="foe${e.hp <= 0 ? " dead" : ""}${e.boss ? " boss" : ""}" style="--sig:${e.hue}">
       <canvas class="portrait" width="112" height="112"></canvas>
       <span class="fname">${e.n}</span>
       <div class="bar hp" style="width:100%"><i style="width:${Math.max(0, 100 * e.hp / e.maxhp)}%"></i></div>
     </div>`).join("");
   document.querySelectorAll<HTMLCanvasElement>("#foes .foe .portrait").forEach((cv, i) => {
-    const e = combat.enemies[i];
+    const e = enemies[i];
     drawMonster(cv, e.boss ? "boss" : e.key, e.hue);
   });
 }
+function renderFoes(): void { renderFoesData(combat.enemies); }
 function awaitChoice<T>(): Promise<T> {
   return new Promise<T>(r => { choiceResolve = r as (v: unknown) => void; });
 }
@@ -369,69 +409,95 @@ async function runCombat(): Promise<void> {
   state.graceLeft = ENC_GRACE + 2; save();
   backToDungeon("You run until the torchlight steadies. Nothing follows. Probably.");
 }
+/* --- co-op: the last two party slots are commanded by the linked companion --- */
+let remoteResolve: ((i: number) => void) | null = null;
+let remotePending: { title: string; btns: CmdBtn[] } | null = null;
+function controllerOf(idx: number): "local" | "remote" {
+  return net.role === "host" && net.connected && idx >= 2 ? "remote" : "local";
+}
+async function ask(idx: number, title: string, btns: CmdBtn[]): Promise<unknown> {
+  if (controllerOf(idx) === "remote") {
+    $("cmd-title").textContent = `${state.party[idx].name} — your companion decides…`;
+    $("cmd-btns").innerHTML = "";
+    remotePending = { title, btns };
+    net.send({ t: "menu", title, btns: btns.map(b => ({ t: b.t, dis: !!b.dis, wide: !!b.wide })) });
+    const i = await new Promise<number>(res => { remoteResolve = res; });
+    remotePending = null; remoteResolve = null;
+    if (i < 0) { // companion dropped mid-choice: fall back to local control
+      cmdMenu(title, btns);
+      return awaitChoice();
+    }
+    return btns[i] ? btns[i].v : { t: "back" };
+  }
+  cmdMenu(title, btns);
+  return awaitChoice();
+}
 async function collectCommands(): Promise<PlayerCmd[]> {
   const cmds: PlayerCmd[] = [];
-  for (const m of state.party) {
+  for (let idx = 0; idx < state.party.length; idx++) {
+    const m = state.party[idx];
     if (m.down) continue;
     let done = false;
     while (!done) {
       const sp = spellsOf(m).filter(s => m.mp >= SPELLS[s].mp);
-      cmdMenu(`${m.name} — your move`, [
+      const c = await ask(idx, `${m.name} — your move`, [
         {t: "Attack", v: {t: "atk"}},
         {t: "Spell", v: {t: "sp"}, dis: !sp.length},
         {t: `Potion (${state.potions})`, v: {t: "pot"}, dis: state.potions <= 0},
         {t: "Defend", v: {t: "def"}},
         {t: combat.isBoss ? "Flee (no escape)" : "Flee", v: {t: "flee"}, wide: true, dis: combat.isBoss},
-      ]);
-      const c = await awaitChoice<{t: string}>();
+      ]) as {t: string};
       if (c.t === "atk") {
-        const t = await pickEnemy(); if (t == null) continue;
+        const t = await pickEnemy(idx); if (t == null) continue;
         cmds.push({m, act: "atk", t}); done = true;
       } else if (c.t === "sp") {
         const spells = spellsOf(m);
         const spellBtns: CmdBtn[] = spells.map(s => ({
           t: `${SPELLS[s].n} · ${SPELLS[s].mp} MP`, v: {t: "cast", s}, dis: m.mp < SPELLS[s].mp,
         }));
-        cmdMenu(`${m.name} — which spell?`, spellBtns.concat([{t: "Back", v: {t: "back"}}]));
-        const sc = await awaitChoice<{t: string; s?: string}>();
+        const sc = await ask(idx, `${m.name} — which spell?`,
+          spellBtns.concat([{t: "Back", v: {t: "back"}}])) as {t: string; s?: string};
         if (sc.t === "back" || !sc.s) continue;
         const def = SPELLS[sc.s];
         if (def.kind === "enemy") {
-          const t = await pickEnemy(); if (t == null) continue;
+          const t = await pickEnemy(idx); if (t == null) continue;
           cmds.push({m, act: "cast", s: sc.s, t});
         } else if (def.kind === "ally") {
-          const t = await pickAlly(false); if (t == null) continue;
+          const t = await pickAlly(idx, false); if (t == null) continue;
           cmds.push({m, act: "cast", s: sc.s, t});
         } else if (def.kind === "fallen") {
-          const t = await pickAlly(true); if (t == null) continue;
+          const t = await pickAlly(idx, true); if (t == null) continue;
           cmds.push({m, act: "cast", s: sc.s, t});
         } else {
           cmds.push({m, act: "cast", s: sc.s});
         }
         done = true;
       } else if (c.t === "pot") {
-        const t = await pickAlly(false); if (t == null) continue;
+        const t = await pickAlly(idx, false); if (t == null) continue;
         cmds.push({m, act: "pot", t}); done = true;
       } else if (c.t === "def") { cmds.push({m, act: "def"}); done = true; }
       else if (c.t === "flee") { cmds.push({m, act: "flee"}); done = true; }
     }
   }
   cmdMenu("", []); $("cmd-title").textContent = "…";
+  net.send({t: "menuclear"});
   return cmds;
 }
-function pickEnemy(): Promise<number | null> {
+async function pickEnemy(idx: number): Promise<number | null> {
   const opts = combat.enemies.map((e, i) => ({e, i})).filter(o => o.e.hp > 0)
     .map(o => ({t: `${o.e.n} · ${o.e.hp}`, v: {t: "pick", i: o.i}}));
-  if (opts.length === 1) return Promise.resolve((opts[0].v as {i: number}).i);
-  cmdMenu("Strike whom?", (opts as CmdBtn[]).concat([{t: "Back", v: {t: "back"}, wide: true}]));
-  return awaitChoice<{t: string; i?: number}>().then(c => c.t === "back" || c.i == null ? null : c.i);
+  if (opts.length === 1) return (opts[0].v as {i: number}).i;
+  const c = await ask(idx, "Strike whom?",
+    (opts as CmdBtn[]).concat([{t: "Back", v: {t: "back"}, wide: true}])) as {t: string; i?: number};
+  return c.t === "back" || c.i == null ? null : c.i;
 }
-function pickAlly(fallen: boolean): Promise<number | null> {
+async function pickAlly(idx: number, fallen: boolean): Promise<number | null> {
   const opts = state.party.map((m, i) => ({m, i})).filter(o => fallen ? o.m.down : !o.m.down)
     .map(o => ({t: `${o.m.name} · ${o.m.down ? "fallen" : o.m.hp + "/" + o.m.maxhp}`, v: {t: "pick", i: o.i}}));
-  if (!opts.length) return Promise.resolve(null);
-  cmdMenu(fallen ? "Raise whom?" : "Aid whom?", (opts as CmdBtn[]).concat([{t: "Back", v: {t: "back"}, wide: true}]));
-  return awaitChoice<{t: string; i?: number}>().then(c => c.t === "back" || c.i == null ? null : c.i);
+  if (!opts.length) return null;
+  const c = await ask(idx, fallen ? "Raise whom?" : "Aid whom?",
+    (opts as CmdBtn[]).concat([{t: "Back", v: {t: "back"}, wide: true}])) as {t: string; i?: number};
+  return c.t === "back" || c.i == null ? null : c.i;
 }
 function physDmg(atk: number, def: number, critCh?: number): [number, boolean] {
   let d = Math.max(1, Math.round(atk * (0.85 + rnd() * 0.3) - def * 0.5));
@@ -594,10 +660,127 @@ function bindEndScreens(): void {
   $("bt-temple-back").onclick = () => openTown();
 }
 
+/* ============================== CO-OP LINK ============================== */
+let lastSync = "";
+let guestActive = false;
+interface SyncMsg {
+  t: "sync"; screen: string; state: GameState; logLines: string[];
+  combat: {enemies: EnemyInst[]; log: string[]; title: string} | null;
+}
+function snapshot(): NetMsg {
+  return {
+    t: "sync",
+    screen: currentScreen,
+    state,
+    logLines,
+    combat: currentScreen === "scr-combat" && combat
+      ? {enemies: combat.enemies, log: combat.log, title: $("combat-title").textContent || ""}
+      : null,
+  };
+}
+setInterval(() => {
+  if (net.role !== "host" || !net.connected || !state) return;
+  const snap = snapshot();
+  const j = JSON.stringify(snap);
+  if (j !== lastSync) { lastSync = j; net.send(snap); }
+}, 250);
+
+function applySync(m: SyncMsg): void {
+  if (!m.state) return;
+  setState(m.state);
+  logLines = m.logLines || [];
+  const scr = m.screen;
+  if (scr === "scr-dungeon") {
+    if (currentScreen !== "scr-dungeon") show("scr-dungeon");
+    renderPlaques("dg-plaques"); redrawLog(); renderView();
+  } else if (scr === "scr-combat" && m.combat) {
+    if (currentScreen !== "scr-combat") show("scr-combat");
+    $("combat-title").textContent = m.combat.title;
+    renderFoesData(m.combat.enemies); renderPlaques("cb-plaques"); redrawCombatLog(m.combat.log);
+  } else if (scr === "scr-end") { show("scr-end");
+  } else if (scr === "scr-dead") {
+    show("scr-dead");
+    $("bt-dead-load").style.display = "none"; // the host decides what happens next
+  } else { // town, shop, temple, tavern — the host manages the surface world
+    if (currentScreen !== "scr-town") show("scr-town");
+    $("town-gold").textContent = String(state.gold);
+    $("town-potions").textContent = String(state.potions);
+    renderPlaques("town-plaques");
+    $("town-menu").innerHTML = `<p class="dim">Your host walks the town — rest while the party provisions. You'll be swept along when they take the Old Stair.</p>`;
+    $("town-msg").textContent = "";
+  }
+}
+
+net.onPeerChange = () => {
+  if (net.role === "host") {
+    lastSync = ""; // force a full snapshot to the (dis)connected companion
+    if (net.connected) {
+      if (currentScreen === "scr-dungeon") dlog("A companion's torch joins yours.");
+      else if (currentScreen === "scr-town") openTown("A companion has answered the signal fire.");
+      if (remotePending) net.send({t: "menu", title: remotePending.title,
+        btns: remotePending.btns.map(b => ({t: b.t, dis: !!b.dis, wide: !!b.wide}))});
+    } else {
+      if (remoteResolve) remoteResolve(-1); // take back control of their members
+      if (currentScreen === "scr-dungeon") dlog("Your companion's torch gutters out — you walk alone again.");
+    }
+  } else if (guestActive && !net.connected) {
+    guestActive = false; setSaveEnabled(true);
+    show("scr-title");
+    $("join-status").textContent = "The link was severed.";
+  }
+};
+
+net.onMessage = m => {
+  if (net.role === "host") {
+    if (m.t === "input" && currentScreen === "scr-dungeon") {
+      const a = m.a as string;
+      if (a === "left") turn(-1); else if (a === "right") turn(1);
+      else if (a === "fwd") step(false); else if (a === "back") step(true);
+      else if (a === "potion") usePotionField();
+    } else if (m.t === "choice" && remoteResolve) {
+      remoteResolve(typeof m.i === "number" ? m.i : -1);
+    }
+  } else if (net.role === "guest") {
+    if (m.t === "sync") applySync(m as unknown as SyncMsg);
+    else if (m.t === "menu") {
+      const btns = (m.btns as {t: string; dis: boolean; wide: boolean}[]) || [];
+      $("cmd-title").textContent = (m.title as string) || "";
+      const box = $("cmd-btns"); box.innerHTML = "";
+      btns.forEach((b, i) => {
+        const el = document.createElement("button");
+        el.textContent = b.t; if (b.wide) el.className = "wide"; el.disabled = b.dis;
+        el.onclick = () => { net.send({t: "choice", i}); box.innerHTML = ""; $("cmd-title").textContent = "…"; };
+        box.appendChild(el);
+      });
+    } else if (m.t === "menuclear") {
+      $("cmd-btns").innerHTML = ""; $("cmd-title").textContent = "…";
+    }
+  }
+};
+
+function bindJoin(): void {
+  const codeEl = $("join-code") as HTMLInputElement;
+  $("bt-join").onclick = () => {
+    const code = codeEl.value.trim().toUpperCase();
+    if (code.length !== 4) { $("join-status").textContent = "Codes are four characters — ask your host for theirs."; return; }
+    $("join-status").textContent = "Following the signal…";
+    net.join(code, err => {
+      if (err) { $("join-status").textContent = "No fire answers that code. Check it and try again."; return; }
+      guestActive = true;
+      setSaveEnabled(false);
+      $("join-status").textContent = "";
+      show("scr-town");
+      $("town-menu").innerHTML = `<p class="dim">Linked! Waiting for your host's world…</p>`;
+      $("town-msg").textContent = "";
+    });
+  };
+}
+
 /* ============================== BOOT ============================== */
 initTitle();
 bindDungeonControls();
 bindEndScreens();
+bindJoin();
 declare global { interface Window { __ei: unknown; } }
 window.__ei = {
   get state() { return state; },
