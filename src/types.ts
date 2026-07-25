@@ -47,6 +47,9 @@ export interface Member {
 
 export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; note?: string; }
 
+/** A monster pack living on the map — visible in the corridor, chases the party. */
+export interface Mob { x: number; y: number; key: string; group: string[]; }
+
 export interface GameState {
   version: number;
   party: Member[];        // the marching four
@@ -55,6 +58,7 @@ export interface GameState {
   visitorsDay: string;    // date stamp of the current visitor roll
   gold: number; potions: number;
   level: number; x: number; y: number; dir: Dir;
+  mobs: Record<number, Mob[]>;
   opened: string[]; visited: Record<number, string[]>;
   bossDown: boolean; heart: boolean;
   steps: number; kills: number; graceLeft: number;

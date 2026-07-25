@@ -7,7 +7,7 @@ import { net } from "./net";
 import { show, currentScreen, renderPlaques, renderFoesData, redrawCombatLog } from "./ui";
 import { $ } from "./util";
 import { renderView } from "./render";
-import { getLogLines, setLogLines, dlog } from "./dungeon";
+import { getLogLines, setLogLines, dlog, updateHUD } from "./dungeon";
 import { openPicker } from "./tavern";
 import { sfx } from "./audio";
 import {
@@ -194,7 +194,7 @@ function applySync(m: SyncMsg): void {
   }
   if (scr === "scr-dungeon") {
     if (currentScreen !== "scr-dungeon") show("scr-dungeon");
-    renderPlaques("dg-plaques"); setLogLines(m.logLines || []); renderView();
+    renderPlaques("dg-plaques"); setLogLines(m.logLines || []); updateHUD(); renderView();
   } else if (scr === "scr-combat" && m.combat) {
     if (currentScreen !== "scr-combat") show("scr-combat");
     $("combat-title").textContent = m.combat.title;

@@ -1,5 +1,5 @@
-import type { Member, Rarity, GameState } from "./types";
-import { CLASSES } from "./data";
+import type { Member, Rarity, GameState, Mob } from "./types";
+import { CLASSES, GROUPS, MAPS } from "./data";
 import { TRAITS, hasTrait } from "./traits";
 import { rnd, ri } from "./util";
 
@@ -100,6 +100,28 @@ export function rollVisitors(state: GameState): Member[] {
 
 export function todayStamp(): string { return new Date().toDateString(); }
 
+/* ============================== WORLD MOBS ============================== */
+const MOB_COUNT: Record<number, number> = {1: 6, 2: 7};
+
+/** Populate a depth with visible, roaming monster packs. */
+export function spawnMobs(level: number, existing: Mob[] = []): Mob[] {
+  const map = MAPS[level];
+  const mobs = [...existing];
+  const taken = new Set(mobs.map(m => m.x + "," + m.y));
+  const entry = level === 1 ? [1, 1] : [1, 1];
+  let guard = 0;
+  while (mobs.length < MOB_COUNT[level] && guard++ < 400) {
+    const y = ri(map.length), x = ri(map[0].length);
+    if (map[y][x] !== ".") continue;
+    if (Math.abs(x - entry[0]) + Math.abs(y - entry[1]) < 5) continue;
+    if (taken.has(x + "," + y)) continue;
+    const group = GROUPS[level][ri(GROUPS[level].length)];
+    mobs.push({x, y, key: group[0], group: [...group]});
+    taken.add(x + "," + y);
+  }
+  return mobs;
+}
+
 /* ============================== WIRE SAFETY ============================== */
 const num = (v: unknown, lo: number, hi: number, fb: number): number => {
   const n = Number(v);
@@ -156,6 +178,7 @@ export function migrateState(s: GameState & {version?: number}): GameState {
   s.collection = s.collection ?? [];
   s.visitors = s.visitors ?? [];
   s.visitorsDay = s.visitorsDay ?? "";
+  s.mobs = s.mobs ?? {1: spawnMobs(1), 2: spawnMobs(2)};
   s.version = 2;
   return s;
 }

@@ -17,6 +17,9 @@ export interface AppBus {
   usePotionField(): void;
   /** Live combat view for co-op snapshots; null outside combat. */
   combatSnapshot(): {enemies: EnemyInst[]; log: string[]; title: string} | null;
+  /** Outcome hooks so the dungeon can settle the engaged mob. */
+  combatWon(): void;
+  combatFled(): void;
 }
 
 export const app = {} as AppBus;

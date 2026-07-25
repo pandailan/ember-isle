@@ -4,8 +4,12 @@ import { show } from "./ui";
 import { $ } from "./util";
 import { openTown, showEnding, bindTownScreens } from "./town";
 import { openDraft, openTavern, bindTavern } from "./tavern";
-import { enterDungeon, backToDungeon, turn, step, usePotionField, bindDungeonControls, rescueParty } from "./dungeon";
+import {
+  enterDungeon, backToDungeon, turn, step, usePotionField,
+  bindDungeonControls, rescueParty, combatWon, combatFled,
+} from "./dungeon";
 import { startCombat, combatSnapshot } from "./combat";
+import { startRenderLoop, renderTitle } from "./render";
 import { initCoop } from "./coop";
 import { openTradePost, bindTrade } from "./trade";
 import { unlock, toggleMute, isMuted, setScene } from "./audio";
@@ -23,6 +27,8 @@ app.step = step;
 app.usePotionField = usePotionField;
 app.combatSnapshot = combatSnapshot;
 app.openTrade = openTradePost;
+app.combatWon = combatWon;
+app.combatFled = combatFled;
 
 /* ============================== TITLE ============================== */
 function initTitle(): void {
@@ -73,6 +79,8 @@ bindEndScreens();
 bindAudio();
 bindTrade();
 initCoop();
+renderTitle();
+startRenderLoop();
 
 declare global { interface Window { __ei: unknown; } }
 window.__ei = {

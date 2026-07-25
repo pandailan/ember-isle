@@ -101,6 +101,29 @@
   .tradeoffer{border:1px solid var(--amber); border-radius:8px; padding:12px; background:#20160a;
     display:flex; flex-direction:column; gap:10px;}
   .tradeoffer h3{color:var(--amber);}
+
+  /* viewport HUD chips */
+  #hud{position:absolute; top:8px; left:8px; display:flex; gap:6px;}
+  .hudchip{display:inline-flex; align-items:center; gap:5px; background:rgba(10,7,5,.78);
+    border:1px solid var(--line); border-radius:12px; padding:3px 10px;
+    font-family:var(--mono); font-size:.78rem; color:var(--parch); font-variant-numeric:tabular-nums;}
+
+  /* floating damage numbers & hit shakes */
+  .foe{position:relative;} .plaque{position:relative;}
+  .pop{position:absolute; left:50%; top:6px; transform:translateX(-50%);
+    font-family:var(--mono); font-weight:700; font-size:1.05rem; color:#f0c060;
+    text-shadow:0 1px 5px rgba(0,0,0,.9); pointer-events:none; z-index:5;
+    animation:popup .9s ease-out forwards;}
+  .pop.crit{color:#ff8a5a; font-size:1.35rem;}
+  .pop.spell{color:#d98a6a;}
+  .pop.heal{color:#9fd06a;}
+  .pop.miss{color:var(--parch-dim); font-size:.85rem;}
+  @keyframes popup{
+    0%{opacity:0; transform:translate(-50%,8px) scale(.8);}
+    18%{opacity:1; transform:translate(-50%,0) scale(1.05);}
+    100%{opacity:0; transform:translate(-50%,-30px) scale(1);}}
+  @keyframes hitshake{0%,100%{transform:none;}25%{transform:translateX(-3px);}75%{transform:translateX(3px);}}
+  .foe.hit,.plaque.hit{animation:hitshake .28s;}
   .rcard .rblurb{color:var(--parch-dim); font-size:.8rem; line-height:1.35;}
   .rcard .rstats{font-family:var(--mono); font-size:.72rem; color:var(--parch-dim); font-variant-numeric:tabular-nums;}
   .rcard.sel{border-color:var(--amber); background:#221708; box-shadow:0 0 0 1px var(--amber) inset;}
@@ -171,8 +194,10 @@
 <div id="app">
 
   <!-- TITLE -->
-  <div class="screen on" id="scr-title" style="justify-content:center; text-align:center; gap:20px;">
-    <div class="flame">✦ ✧ ✦</div>
+  <div class="screen on" id="scr-title" style="justify-content:center; text-align:center; gap:16px;">
+    <div class="viewwrap" style="max-width:520px; margin:0 auto; width:100%;">
+      <canvas id="title-canvas" width="480" height="220" style="display:block; width:100%; height:auto;"></canvas>
+    </div>
     <h1>Ember Isle</h1>
     <p class="dim sc" style="text-align:center; letter-spacing:.2em;">a first-person dungeon crawl</p>
     <hr class="rule" style="max-width:200px; margin:8px auto;">
@@ -276,6 +301,7 @@
     <div class="viewwrap">
       <canvas id="view" width="480" height="360"></canvas>
       <canvas id="automap" width="120" height="120"></canvas>
+      <div id="hud"></div>
     </div>
     <div class="compass"><span id="pos-label"></span><span>Facing <b id="dir-label">N</b></span></div>
     <div id="log"></div>

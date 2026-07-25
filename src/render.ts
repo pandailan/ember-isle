@@ -1,5 +1,5 @@
-import { MAPS, LEVEL_NAMES, DIRV, DIRN } from "./data";
-import { state, cellAt } from "./state";
+import { MAPS, LEVEL_NAMES, DIRV, DIRN, ENEMIES } from "./data";
+import { state, cellAt, mobAt } from "./state";
 import { $, rnd, reduceMotion } from "./util";
 
 export const view = document.getElementById("view") as HTMLCanvasElement;
@@ -16,6 +16,46 @@ const SIDE  = ["#5c452f", "#4a3826", "#3a2c1e", "#2b2117", "#1c1510"];
 const px = (p: number, u: number) => CX + u * CW[p];
 const TYP = (p: number) => CY - HH[p];
 const BYP = (p: number) => CY + HH[p];
+
+/* ---------- animation clock, sprite cache, ember particles ---------- */
+let animT = 0;
+
+const spriteCache: Record<string, HTMLCanvasElement> = {};
+function getSprite(key: string): HTMLCanvasElement {
+  if (!spriteCache[key]) {
+    const cv = document.createElement("canvas");
+    cv.width = 96; cv.height = 96;
+    drawMonster(cv, key, ENEMIES[key]?.hue ?? "#8a7a52");
+    spriteCache[key] = cv;
+  }
+  return spriteCache[key];
+}
+
+interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; hue: string; }
+let sparks: Spark[] = [];
+function updateSparks(dt: number): void {
+  if (sparks.length < 22 && rnd() < 0.35)
+    sparks.push({x: rnd() * W, y: H - 10 - rnd() * 50, vx: (rnd() - 0.5) * 8,
+                 vy: -(10 + rnd() * 16), life: 0, max: 2.5 + rnd() * 3,
+                 hue: rnd() < 0.7 ? "224,154,60" : "200,80,47"});
+  for (const s of sparks) {
+    s.life += dt;
+    s.x += s.vx * dt + Math.sin(animT * 2 + s.y * 0.05) * 8 * dt;
+    s.y += s.vy * dt;
+  }
+  sparks = sparks.filter(s => s.life < s.max && s.y > -10);
+}
+function drawSparks(): void {
+  for (const s of sparks) {
+    const a = Math.sin(Math.PI * s.life / s.max) * 0.55;
+    const r = 1.1 + Math.sin(s.life * 7) * 0.4;
+    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 4);
+    g.addColorStop(0, `rgba(${s.hue},${a})`);
+    g.addColorStop(1, `rgba(${s.hue},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(s.x - r * 4, s.y - r * 4, r * 8, r * 8);
+  }
+}
 
 function poly(pts: [number, number][], fill: string): void {
   ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
@@ -101,23 +141,52 @@ function drawFeature(c: string, d: number, l: number): void {
     const gl = ctx.createRadialGradient(cxm, fy - s * 0.5, 2, cxm, fy - s * 0.5, s * 0.8);
     gl.addColorStop(0, "rgba(127,168,189,.35)"); gl.addColorStop(1, "rgba(127,168,189,0)");
     ctx.fillStyle = gl; ctx.fillRect(cxm - s, fy - s * 1.4, s * 2, s * 1.6);
-  } else if (c === "B") { // the Pyrelord waits
+  } else if (c === "B") { // the Pyrelord waits, breathing light
+    const pulse = reduceMotion ? 1 : 0.75 + 0.25 * Math.sin(animT * 2.6);
     ctx.fillStyle = "rgba(20,10,6,.9)"; ctx.beginPath();
     ctx.moveTo(cxm, fy - s * 1.5); ctx.lineTo(cxm + s * 0.7, fy); ctx.lineTo(cxm - s * 0.7, fy);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = "#e09a3c";
     ctx.fillRect(cxm - s * 0.18, fy - s * 1.05, s * 0.1, s * 0.07);
     ctx.fillRect(cxm + s * 0.08, fy - s * 1.05, s * 0.1, s * 0.07);
-    const gl = ctx.createRadialGradient(cxm, fy - s * 0.7, 4, cxm, fy - s * 0.7, s * 1.3);
-    gl.addColorStop(0, "rgba(200,80,47,.3)"); gl.addColorStop(1, "rgba(200,80,47,0)");
-    ctx.fillStyle = gl; ctx.fillRect(cxm - s * 1.5, fy - s * 2, s * 3, s * 2.4);
-  } else if (c === "E") { // way out: daylight arch
-    ctx.fillStyle = "rgba(232,217,176,.14)";
+    const gl = ctx.createRadialGradient(cxm, fy - s * 0.7, 4, cxm, fy - s * 0.7, s * 1.5 * pulse);
+    gl.addColorStop(0, `rgba(200,80,47,${0.34 * pulse})`); gl.addColorStop(1, "rgba(200,80,47,0)");
+    ctx.fillStyle = gl; ctx.fillRect(cxm - s * 1.8, fy - s * 2.3, s * 3.6, s * 2.8);
+  } else if (c === "E") { // way out: daylight arch with a falling shaft of light
+    const shimmer = reduceMotion ? 0 : Math.sin(animT * 1.7) * 0.03;
+    ctx.fillStyle = `rgba(232,217,176,${0.16 + shimmer})`;
     ctx.beginPath();
     ctx.moveTo(cxm - s * 0.45, fy); ctx.lineTo(cxm - s * 0.45, fy - s * 0.9);
     ctx.arc(cxm, fy - s * 0.9, s * 0.45, Math.PI, 0);
     ctx.lineTo(cxm + s * 0.45, fy); ctx.closePath(); ctx.fill();
+    const ray = ctx.createLinearGradient(0, fy - s * 1.3, 0, fy + s * 0.6);
+    ray.addColorStop(0, `rgba(232,217,176,${0.12 + shimmer})`);
+    ray.addColorStop(1, "rgba(232,217,176,0)");
+    ctx.fillStyle = ray;
+    ctx.beginPath();
+    ctx.moveTo(cxm - s * 0.45, fy - s * 1.3); ctx.lineTo(cxm + s * 0.45, fy - s * 1.3);
+    ctx.lineTo(cxm + s * 1.0, fy + s * 0.6); ctx.lineTo(cxm - s * 1.0, fy + s * 0.6);
+    ctx.closePath(); ctx.fill();
   }
+  ctx.restore();
+}
+
+/** A monster pack standing in the corridor, bobbing in the torchlight. */
+function drawMob(key: string, d: number, l: number, wx: number, wy: number): void {
+  const s = HH[Math.min(d + 1, 4)];
+  const cxm = CX + l * (CW[d] + CW[Math.min(d + 1, 4)]) / 2;
+  const fy = CY + HH[Math.min(d + 1, 4)] * 0.9;
+  const size = s * 1.7;
+  const bob = reduceMotion ? 0 : Math.sin(animT * 2.6 + wx * 7 + wy * 13) * s * 0.05;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.42)";
+  ctx.beginPath(); ctx.ellipse(cxm, fy, size * 0.3, size * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+  const hue = ENEMIES[key]?.hue ?? "#8a7a52";
+  const gl = ctx.createRadialGradient(cxm, fy - size * 0.45, 2, cxm, fy - size * 0.45, size * 0.7);
+  gl.addColorStop(0, hue + "2e"); gl.addColorStop(1, hue + "00");
+  ctx.fillStyle = gl; ctx.fillRect(cxm - size, fy - size * 1.2, size * 2, size * 1.4);
+  ctx.globalAlpha = [1, 1, 0.95, 0.82, 0.65][d];
+  ctx.drawImage(getSprite(key), cxm - size / 2, fy - size + bob, size, size);
   ctx.restore();
 }
 
@@ -152,6 +221,7 @@ export function renderView(): void {
 
   for (let d = 4; d >= 0; d--) {
     const feats: [string, number, number][] = [];
+    const mobsHere: [string, number, number, number, number][] = [];
     const lats: number[] = []; for (let l = -4; l <= 4; l++) lats.push(l);
     lats.sort((a, b) => Math.abs(b) - Math.abs(a));
     for (const l of lats) {
@@ -163,13 +233,23 @@ export function renderView(): void {
         if (d >= 1) drawFrontWall(d, l);
       } else {
         const c = at(d, l);
-        if (c !== "." && c !== "#" && Math.abs(l) <= 1 && d <= 3) feats.push([c, d, l]);
+        // (you don't see the arch you're standing in)
+        if (c !== "." && c !== "#" && Math.abs(l) <= 1 && d <= 3 && !(c === "E" && d === 0 && l === 0))
+          feats.push([c, d, l]);
+        if (Math.abs(l) <= 2 && d >= 1 && d <= 3) {
+          const wx = state.x + f[0] * d + r[0] * l, wy = state.y + f[1] * d + r[1] * l;
+          const mob = mobAt(state.level, wx, wy);
+          if (mob) mobsHere.push([mob.key, d, l, wx, wy]);
+        }
       }
     }
     for (const [c, fd, fl] of feats) drawFeature(c, fd, fl);
+    for (const [k, md, ml, wx, wy] of mobsHere) drawMob(k, md, ml, wx, wy);
   }
-  // torch glow
-  const tflick = reduceMotion ? 1 : 0.92 + rnd() * 0.16;
+  // drifting embers
+  drawSparks();
+  // torch glow — a slow breath rather than random jitter
+  const tflick = reduceMotion ? 1 : 0.94 + 0.06 * Math.sin(animT * 5.3) + 0.03 * Math.sin(animT * 13.7);
   const tg = ctx.createRadialGradient(CX, CY + 16, 26, CX, CY + 16, 290 * tflick);
   tg.addColorStop(0, "rgba(224,154,60,.13)");
   tg.addColorStop(0.45, "rgba(224,154,60,.04)");
@@ -177,7 +257,7 @@ export function renderView(): void {
   ctx.fillStyle = tg; ctx.fillRect(0, 0, W, H);
   // darkness vignette
   const v = ctx.createRadialGradient(CX, CY, 60, CX, CY, 300);
-  const a = reduceMotion ? 0.42 : 0.38 + rnd() * 0.07;
+  const a = reduceMotion ? 0.42 : 0.40 + 0.035 * Math.sin(animT * 4.1);
   v.addColorStop(0, "rgba(0,0,0,0)");
   v.addColorStop(0.55, "rgba(0,0,0,0)");
   v.addColorStop(1, `rgba(0,0,0,${a})`);
@@ -204,6 +284,12 @@ export function renderAutomap(): void {
     if (FEAT_HUE[c]) {
       actx.fillStyle = FEAT_HUE[c];
       actx.fillRect(ox + x * cs + cs * 0.25, oy + y * cs + cs * 0.25, cs * 0.5 - 1, cs * 0.5 - 1);
+    }
+    if (mobAt(state.level, x, y)) {
+      actx.fillStyle = "#c8502f";
+      actx.beginPath();
+      actx.arc(ox + x * cs + cs / 2, oy + y * cs + cs / 2, cs * 0.28, 0, Math.PI * 2);
+      actx.fill();
     }
     // reveal walls adjacent to visited floor
     for (const [dx, dy] of DIRV) {
@@ -308,4 +394,91 @@ export function drawMonster(cv: HTMLCanvasElement, key: string, hue: string): vo
     eye(-7, -10, 3.2, "#e09a3c"); eye(7, -10, 3.2, "#e09a3c");
   }
   c.restore();
+}
+
+/* ============================== TITLE SCENE ============================== */
+/* A painted view of Vhalis at night: moonlit sea, the island's silhouette,
+   and the Ember glowing beneath the water. */
+const prand = (i: number) => { const s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); };
+
+export function renderTitle(): void {
+  const tc = document.getElementById("title-canvas") as HTMLCanvasElement | null;
+  if (!tc) return;
+  const c = tc.getContext("2d")!;
+  const TW = tc.width, TH = tc.height, HOR = TH * 0.62;
+  // night sky
+  let g = c.createLinearGradient(0, 0, 0, HOR);
+  g.addColorStop(0, "#070b14"); g.addColorStop(1, "#1a1410");
+  c.fillStyle = g; c.fillRect(0, 0, TW, HOR);
+  // stars
+  for (let i = 0; i < 40; i++) {
+    const tw = reduceMotion ? 0.7 : 0.4 + 0.6 * Math.abs(Math.sin(animT * (0.5 + prand(i + 9)) + i));
+    c.fillStyle = `rgba(232,217,176,${0.5 * tw * prand(i + 40)})`;
+    c.fillRect(prand(i) * TW, prand(i + 80) * HOR * 0.85, 1.4, 1.4);
+  }
+  // moon
+  c.fillStyle = "rgba(220,222,210,.85)";
+  c.beginPath(); c.arc(TW * 0.78, TH * 0.18, 13, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#0b0f18";
+  c.beginPath(); c.arc(TW * 0.78 + 5, TH * 0.18 - 3, 11, 0, Math.PI * 2); c.fill();
+  // sea
+  g = c.createLinearGradient(0, HOR, 0, TH);
+  g.addColorStop(0, "#101822"); g.addColorStop(1, "#070a10");
+  c.fillStyle = g; c.fillRect(0, HOR, TW, TH - HOR);
+  // the Ember, burning beneath the bay
+  const pulse = reduceMotion ? 1 : 0.8 + 0.2 * Math.sin(animT * 1.3);
+  const em = c.createRadialGradient(TW * 0.42, TH * 0.9, 4, TW * 0.42, TH * 0.9, 90 * pulse);
+  em.addColorStop(0, `rgba(200,80,47,${0.5 * pulse})`);
+  em.addColorStop(0.4, `rgba(224,154,60,${0.22 * pulse})`);
+  em.addColorStop(1, "rgba(224,154,60,0)");
+  c.fillStyle = em; c.fillRect(0, HOR, TW, TH - HOR);
+  // wave glints
+  for (let i = 0; i < 26; i++) {
+    const y = HOR + 6 + prand(i + 7) * (TH - HOR - 10);
+    const ph = reduceMotion ? 0.5 : Math.sin(animT * (0.8 + prand(i)) + i * 2);
+    const wgl = i % 3 === 0 ? "224,154,60" : "180,190,200";
+    c.fillStyle = `rgba(${wgl},${0.06 + 0.1 * Math.abs(ph)})`;
+    c.fillRect(prand(i + 30) * TW + ph * 6, y, 12 + prand(i) * 22, 1.2);
+  }
+  // island silhouette with the Old Stair's tower
+  c.fillStyle = "#0a0805";
+  c.beginPath();
+  c.moveTo(TW * 0.04, HOR + 1);
+  c.quadraticCurveTo(TW * 0.14, HOR - TH * 0.16, TW * 0.28, HOR - TH * 0.1);
+  c.lineTo(TW * 0.31, HOR - TH * 0.3); c.lineTo(TW * 0.345, HOR - TH * 0.3); // tower
+  c.lineTo(TW * 0.36, HOR - TH * 0.09);
+  c.quadraticCurveTo(TW * 0.5, HOR - TH * 0.05, TW * 0.56, HOR + 1);
+  c.closePath(); c.fill();
+  // one lit window in the tavern tower
+  const win = reduceMotion ? 0.8 : 0.6 + 0.4 * Math.abs(Math.sin(animT * 3 + 1));
+  c.fillStyle = `rgba(224,154,60,${win})`;
+  c.fillRect(TW * 0.325, HOR - TH * 0.26, 3, 4);
+  // rising embers from the bay
+  for (let i = 0; i < 8; i++) {
+    const ph = (reduceMotion ? 0.4 : (animT * (0.12 + prand(i) * 0.1) + prand(i + 3)) % 1);
+    const ex = TW * 0.42 + Math.sin((ph * 5 + i) * 2) * 30 * prand(i + 5);
+    const ey = TH * 0.95 - ph * (TH * 0.55);
+    c.fillStyle = `rgba(224,154,60,${(1 - ph) * 0.5})`;
+    c.fillRect(ex, ey, 1.6, 1.6);
+  }
+}
+
+/* ============================== RENDER LOOP ============================== */
+let loopStarted = false;
+export function startRenderLoop(): void {
+  if (loopStarted || reduceMotion) { if (reduceMotion) renderTitle(); return; }
+  loopStarted = true;
+  let last = 0, acc = 0;
+  const frame = (ts: number): void => {
+    const dt = Math.min(0.1, (ts - last) / 1000); last = ts;
+    animT += dt; acc += dt;
+    if (acc >= 1 / 30) { // 30fps is plenty for torchlight
+      acc = 0;
+      const scr = document.querySelector(".screen.on")?.id;
+      if (scr === "scr-dungeon" && state) { updateSparks(dt * 2); renderView(); }
+      else if (scr === "scr-title") renderTitle();
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }

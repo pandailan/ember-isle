@@ -26,6 +26,29 @@ function clog(msg: string): void {
 }
 function renderFoes(): void { renderFoesData(combat.enemies); }
 
+/* Floating damage numbers & hit shakes, flushed after each re-render. */
+interface Pop { side: "e" | "p"; idx: number; text: string; cls: string; }
+let pendingPops: Pop[] = [];
+function pop(side: "e" | "p", idx: number, text: string, cls = ""): void {
+  pendingPops.push({side, idx, text, cls});
+}
+function flushPops(): void {
+  for (const p of pendingPops) {
+    const sel = p.side === "e" ? "#foes .foe" : "#cb-plaques .plaque";
+    const el = document.querySelectorAll<HTMLElement>(sel)[p.idx];
+    if (!el) continue;
+    const span = document.createElement("span");
+    span.className = "pop " + p.cls;
+    span.textContent = p.text;
+    el.appendChild(span);
+    el.classList.remove("hit"); void el.offsetWidth; el.classList.add("hit");
+    setTimeout(() => span.remove(), 950);
+  }
+  pendingPops = [];
+}
+function enemyIdx(e: EnemyInst): number { return combat.enemies.indexOf(e); }
+function memberIdx(m: Member): number { return state.party.indexOf(m); }
+
 function awaitChoice<T>(): Promise<T> {
   return new Promise<T>(r => { choiceResolve = r as (v: unknown) => void; });
 }
@@ -97,7 +120,7 @@ async function runCombat(): Promise<void> {
       if (combat.fled) break;
       if (a.side === "p") { if (!a.c.m.down) await doPlayerAction(a.c); }
       else { if (a.e.hp > 0) await doEnemyAction(a.e); }
-      renderFoes(); renderPlaques("cb-plaques");
+      renderFoes(); renderPlaques("cb-plaques"); flushPops();
     }
     if (combat.fled) break;
     if (combat.enemies.every(e => e.hp <= 0)) { await combatVictory(); return; }
@@ -105,7 +128,8 @@ async function runCombat(): Promise<void> {
   }
   // fled
   await sleep(500);
-  state.graceLeft = ENC_GRACE + 2; save();
+  state.graceLeft = ENC_GRACE + 2;
+  app.combatFled(); save();
   app.backToDungeon("You run until the torchlight steadies. Nothing follows. Probably.");
 }
 
@@ -206,6 +230,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
     const [d, crit] = physDmg(atkOf(m), e.def, critOf(m));
     sfx(crit ? "crit" : "hit");
     clog(`${m.name} strikes ${e.n} for ${d}${crit ? " — a telling blow!" : "."}`);
+    pop("e", enemyIdx(e), `-${d}`, crit ? "crit" : "");
     hitEnemy(e, d);
     await sleep(PACE);
   } else if (c.act === "cast" && c.s) {
@@ -224,6 +249,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
           if (e.hp <= 0) break;
           const [d, crit] = physDmg(atkOf(m) * (def.mult ?? 1), e.def, critOf(m) + (def.critBonus ?? 0));
           clog(`— ${e.n} takes ${d}${crit ? ", a telling blow!" : "."}`);
+          pop("e", enemyIdx(e), `-${d}`, crit ? "crit" : "");
           hitEnemy(e, d);
         }
       }
@@ -232,6 +258,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
       sfx("spell");
       let d = spellPower(m, def.d!(m)); if (def.holy && e.undead) d = Math.round(d * 1.5);
       clog(`${m.name} ${def.txt} ${e.n} for ${d}.`);
+      pop("e", enemyIdx(e), `-${d}`, "spell");
       hitEnemy(e, d);
     } else if (def.kind === "enemies") {
       sfx("spell");
@@ -239,6 +266,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
       for (const e of combat.enemies) {
         if (e.hp <= 0) continue;
         const d = Math.max(1, spellPower(m, def.d!(m)) - Math.floor(e.def / 3));
+        pop("e", enemyIdx(e), `-${d}`, "spell");
         hitEnemy(e, d);
       }
     } else if (def.kind === "ally") {
@@ -246,18 +274,21 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
       sfx("heal");
       const h = healAmount(def.d!(m), m, t); t.hp = Math.min(t.maxhp, t.hp + h);
       clog(`${m.name} ${def.txt} ${t.name} for ${h}.`);
+      pop("p", c.t!, `+${h}`, "heal");
     } else if (def.kind === "allies") {
       sfx("heal");
       clog(`${m.name} lifts a prayer — the party is mended.`);
       for (const t of alive()) {
         const h = healAmount(def.d!(m), m, t);
         t.hp = Math.min(t.maxhp, t.hp + h);
+        pop("p", memberIdx(t), `+${h}`, "heal");
       }
     } else if (def.kind === "fallen") {
       const t = state.party[c.t!]; if (!t || !t.down) return;
       sfx("heal");
       t.down = false; t.hp = Math.floor(t.maxhp / 2);
       clog(`${m.name} ${def.txt} ${t.name} from the dark!`);
+      pop("p", c.t!, "risen", "heal");
     }
     await sleep(PACE);
   } else if (c.act === "pot") {
@@ -267,6 +298,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
     const heal = potionHeal(state.party);
     state.potions--; t.hp = Math.min(t.maxhp, t.hp + heal);
     clog(`${m.name} presses a potion to ${t.name}'s lips. (+${heal})`);
+    pop("p", c.t!, `+${heal}`, "heal");
     await sleep(PACE);
   } else if (c.act === "def") {
     m.guard = true; clog(`${m.name} sets a guard.`); await sleep(260);
@@ -286,7 +318,9 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
     sfx("spell");
     clog(`${e.n} draws breath — FLAME sweeps the chamber!`);
     for (const m of alive()) {
+      const before = m.hp;
       hurtMember(m, 14 + ri(7) - Math.floor(defOf(m) / 3), true);
+      pop("p", memberIdx(m), `-${before - m.hp}`, "");
       if (m.down) clog(`${m.name} is engulfed and falls!`);
     }
     await sleep(PACE + 200); return;
@@ -294,19 +328,24 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
   if (e.caster && rnd() < 0.35) {
     sfx("spell");
     const raw = Math.max(2, 12 + ri(6) - Math.floor(defOf(t) / 4));
+    const before = t.hp;
     hurtMember(t, raw, true);
+    pop("p", memberIdx(t), `-${before - t.hp}`, "spell");
     clog(`${e.n} hurls emberfire at ${t.name}.`);
     if (t.down) clog(`${t.name} falls!`);
     await sleep(PACE); return;
   }
   if (hasFlag(t, "dodge") && rnd() < 0.12) {
     clog(`${e.n} lunges — ${t.name} is simply not there.`);
+    pop("p", memberIdx(t), "miss", "miss");
     await sleep(PACE); return;
   }
   sfx("hit");
   const effDef = e.pierce ? Math.floor(defOf(t) / 2) : defOf(t);
   const [raw] = physDmg(e.atk, effDef, 0.08);
+  const before = t.hp;
   hurtMember(t, raw);
+  pop("p", memberIdx(t), `-${before - t.hp}`, "");
   clog(`${e.n} tears at ${t.name}.`);
   if (t.down) clog(`${t.name} falls!`);
   await sleep(PACE);
@@ -354,7 +393,8 @@ async function combatVictory(): Promise<void> {
     app.backToDungeon("The Heart of Ember weighs your pack like a promise. The harbor is waiting.");
     return;
   }
-  state.graceLeft = ENC_GRACE; save();
+  state.graceLeft = ENC_GRACE;
+  app.combatWon(); save();
   cmdMenu("", [{t: "Press On", v: 1, wide: true}]);
   await awaitChoice();
   app.backToDungeon(null);

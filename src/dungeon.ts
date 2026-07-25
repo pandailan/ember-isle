@@ -1,16 +1,17 @@
-import type { Dir } from "./types";
-import { state, save, cellAt, markVisited, allCards } from "./state";
+import type { Dir, Mob } from "./types";
+import { state, save, cellAt, markVisited, allCards, mobAt } from "./state";
 import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
-import { MAPS, CHESTS, GROUPS, ENC_RATE, ENC_GRACE, DIRV } from "./data";
+import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV } from "./data";
 import { potionHeal } from "./traits";
+import { spawnMobs } from "./cards";
 import { view, amap, renderView } from "./render";
 import { net } from "./net";
 import { setScene, sfx } from "./audio";
 
 let logLines: string[] = [];
-let flickerTimer: ReturnType<typeof setInterval> | null = null;
+let engagedMob: Mob | null = null;
 
 export function getLogLines(): string[] { return logLines; }
 export function setLogLines(l: string[]): void { logLines = l; redrawLog(); }
@@ -25,6 +26,12 @@ export function dlog(msg: string): void {
   redrawLog();
 }
 
+export function updateHUD(): void {
+  $("hud").innerHTML = `
+    <span class="hudchip"><svg viewBox="0 0 10 10" width="11" height="11"><circle cx="5" cy="5" r="4" fill="#e0b24c"/><circle cx="5" cy="5" r="2.2" fill="#a3782c"/></svg>${state.gold}</span>
+    <span class="hudchip"><svg viewBox="0 0 10 12" width="10" height="12"><rect x="3.4" y="0" width="3.2" height="3" fill="#8a7a52"/><path d="M3 3 h4 l1.5 3 v4.5 a1.5 1.5 0 0 1 -1.5 1.5 h-4 a1.5 1.5 0 0 1 -1.5 -1.5 v-4.5 z" fill="#c8502f"/></svg>${state.potions}</span>`;
+}
+
 export function enterDungeon(fresh: boolean): void {
   if (fresh && state.party.length < 4) {
     app.openTavern("The harbormaster bars the Stair: four must march. Fill the marching four first.");
@@ -34,6 +41,9 @@ export function enterDungeon(fresh: boolean): void {
   setScene("dungeon");
   if (fresh) {
     state.level = 1; state.x = 1; state.y = 1; state.dir = 1; state.graceLeft = ENC_GRACE;
+    // the caves refill while you're topside
+    state.mobs[1] = spawnMobs(1, state.mobs[1]);
+    state.mobs[2] = spawnMobs(2, state.mobs[2]);
     logLines = []; dlog("The Old Stair ends in torch-dark. The air tastes of cinders.");
   } else {
     logLines = []; dlog("You take up your torches where you left them.");
@@ -41,18 +51,55 @@ export function enterDungeon(fresh: boolean): void {
   markVisited(); save();
   show("scr-dungeon");
   renderPlaques("dg-plaques");
+  updateHUD();
   renderView();
-  if (!reduceMotion && !flickerTimer) flickerTimer = setInterval(() => {
-    if ($("scr-dungeon").classList.contains("on")) renderView();
-  }, 220);
 }
 
 export function turn(d: number): void { state.dir = ((state.dir + d + 4) % 4) as Dir; renderView(); }
+
+function engage(mob: Mob): void {
+  engagedMob = mob;
+  sfx("combat");
+  dlog(`${ENEMIES[mob.key]?.n ?? "Something"} lunges from the dark!`);
+  app.startCombat(mob.group, false);
+}
+
+/** After the party moves, nearby packs stalk closer; distant ones wander. */
+function moveMobs(): void {
+  const mobs = state.mobs[state.level] ?? [];
+  const occupied = new Set(mobs.map(m => m.x + "," + m.y));
+  let attacker: Mob | null = null;
+  for (const m of mobs) {
+    const dx = state.x - m.x, dy = state.y - m.y;
+    const dist = Math.abs(dx) + Math.abs(dy);
+    const steps: [number, number][] = [];
+    if (dist <= 4 && dist > 0) {
+      if (Math.abs(dx) >= Math.abs(dy)) steps.push([Math.sign(dx), 0], [0, Math.sign(dy)]);
+      else steps.push([0, Math.sign(dy)], [Math.sign(dx), 0]);
+    } else if (rnd() < 0.2) {
+      steps.push(DIRV[ri(4)] as unknown as [number, number]);
+    }
+    for (const [sx, sy] of steps) {
+      if (!sx && !sy) continue;
+      const tx = m.x + sx, ty = m.y + sy;
+      if (tx === state.x && ty === state.y) { if (!attacker) attacker = m; break; }
+      if (MAPS[state.level][ty]?.[tx] !== ".") continue;
+      if (occupied.has(tx + "," + ty)) continue;
+      occupied.delete(m.x + "," + m.y);
+      m.x = tx; m.y = ty;
+      occupied.add(tx + "," + ty);
+      break;
+    }
+  }
+  if (attacker) engage(attacker);
+}
 
 export function step(back: boolean): void {
   const f = DIRV[state.dir], s = back ? -1 : 1;
   const nx = state.x + f[0] * s, ny = state.y + f[1] * s;
   if (cellAt(state.level, nx, ny) === "#") { sfx("bump"); dlog("Stone. You are not the first to test it."); renderView(); return; }
+  const mob = mobAt(state.level, nx, ny);
+  if (mob) { engage(mob); return; } // you charge them where they stand
   state.x = nx; state.y = ny; state.steps++; markVisited();
   sfx("step");
   if (!reduceMotion) {
@@ -62,7 +109,19 @@ export function step(back: boolean): void {
   const raw = MAPS[state.level][ny][nx];
   renderView();
   void onEnterCell(raw);
+  if ($("scr-dungeon").classList.contains("on")) { moveMobs(); renderView(); }
 }
+
+/** Combat outcome hooks (wired through the bus). */
+export function combatWon(): void {
+  if (!engagedMob) return;
+  const lvl = state.level;
+  state.mobs[lvl] = (state.mobs[lvl] ?? []).filter(m => m !== engagedMob &&
+    !(m.x === engagedMob!.x && m.y === engagedMob!.y));
+  engagedMob = null;
+  save();
+}
+export function combatFled(): void { engagedMob = null; }
 
 async function onEnterCell(raw: string): Promise<void> {
   const key = state.level + ":" + state.x + "," + state.y;
@@ -75,7 +134,7 @@ async function onEnterCell(raw: string): Promise<void> {
     if (loot.charm) { state.charm = true; got.push("the Emberward Charm (DEF +2 for all)"); }
     sfx("chest");
     dlog(`You pry open ${loot.note || "a chest"} — ${got.join(", ")}.`);
-    save(); renderView(); return;
+    updateHUD(); save(); renderView(); return;
   }
   if (raw === "F") {
     for (const m of state.party) { if (!m.down) { m.hp = m.maxhp; m.mp = m.maxmp; } }
@@ -101,14 +160,7 @@ async function onEnterCell(raw: string): Promise<void> {
     app.startCombat(["boss"], true);
     return;
   }
-  if (raw === ".") {
-    if (state.graceLeft > 0) { state.graceLeft--; }
-    else if (rnd() < ENC_RATE[state.level]) {
-      const g = GROUPS[state.level][ri(GROUPS[state.level].length)];
-      await sleep(150);
-      app.startCombat(g, false);
-    }
-  }
+  // no unseen ambushes: every fight in these caves walks on visible feet
 }
 
 export function usePotionField(): void {
@@ -120,7 +172,7 @@ export function usePotionField(): void {
   state.potions--; worst.hp = Math.min(worst.maxhp, worst.hp + heal);
   sfx("heal");
   dlog(`${worst.name} drinks a potion. (+${heal} HP · ${state.potions} left)`);
-  renderPlaques("dg-plaques"); save();
+  renderPlaques("dg-plaques"); updateHUD(); save();
 }
 
 // Guests steer through the host: inputs travel the link, moves come back as synced state.
@@ -169,6 +221,7 @@ export function backToDungeon(msg: string | null): void {
   setScene("dungeon");
   show("scr-dungeon");
   renderPlaques("dg-plaques");
+  updateHUD();
   if (msg) dlog(msg);
   renderView();
 }

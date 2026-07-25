@@ -1,6 +1,7 @@
 import type { GameState, Member, Dir } from "./types";
 import { MAPS, ABONUS, SAVE_KEY, ENC_GRACE } from "./data";
-import { migrateState, cleanupLend } from "./cards";
+import { migrateState, cleanupLend, spawnMobs } from "./cards";
+import type { Mob } from "./types";
 
 export let state: GameState = null as unknown as GameState;
 export function setState(s: GameState): void { state = s; }
@@ -8,8 +9,13 @@ export function setState(s: GameState): void { state = s; }
 export function newState(party: Member[]): GameState {
   return {version: 2, party, collection: [], visitors: [], visitorsDay: "",
           gold: 80, potions: 2, level: 1, x: 1, y: 1, dir: 1 as Dir,
+          mobs: {1: spawnMobs(1), 2: spawnMobs(2)},
           opened: [], visited: {1: ["1,1"], 2: []}, bossDown: false, heart: false,
           steps: 0, kills: 0, graceLeft: ENC_GRACE, inDungeon: false};
+}
+
+export function mobAt(lvl: number, x: number, y: number): Mob | null {
+  return state.mobs?.[lvl]?.find(m => m.x === x && m.y === y) ?? null;
 }
 
 export const defOf = (m: Member) => m.def + ABONUS[m.aTier] + (state.charm ? 2 : 0);
