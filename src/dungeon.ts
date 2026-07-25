@@ -3,7 +3,7 @@ import { state, save, cellAt, markVisited, allCards, mobAt } from "./state";
 import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
-import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV } from "./data";
+import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID } from "./data";
 import { potionHeal } from "./traits";
 import { spawnMobs } from "./cards";
 import { view, amap, renderView } from "./render";
@@ -55,6 +55,16 @@ export function enterDungeon(fresh: boolean): void {
   renderView();
 }
 
+/** Show the walking view without changing where we are (town streets use this). */
+export function enterWalk(msg: string | null): void {
+  markVisited(); save();
+  show("scr-dungeon");
+  renderPlaques("dg-plaques");
+  updateHUD();
+  if (msg) dlog(msg); else redrawLog();
+  renderView();
+}
+
 export function turn(d: number): void { state.dir = ((state.dir + d + 4) % 4) as Dir; renderView(); }
 
 function engage(mob: Mob): void {
@@ -94,10 +104,21 @@ function moveMobs(): void {
   if (attacker) engage(attacker);
 }
 
-export function step(back: boolean): void {
+export function step(back: boolean, byGuest = false): void {
   const f = DIRV[state.dir], s = back ? -1 : 1;
   const nx = state.x + f[0] * s, ny = state.y + f[1] * s;
-  if (cellAt(state.level, nx, ny) === "#") { sfx("bump"); dlog("Stone. You are not the first to test it."); renderView(); return; }
+  const cell = cellAt(state.level, nx, ny);
+  if (cell === "#") {
+    sfx("bump");
+    dlog(state.level === 0 ? "A shuttered wall. The town sleeps." : "Stone. You are not the first to test it.");
+    renderView(); return;
+  }
+  if (state.level === 0 && TOWN_SOLID.includes(cell)) {
+    if (byGuest) { dlog("Your host must be the one to knock."); return; }
+    sfx("tap");
+    app.townDoor(cell);
+    return;
+  }
   const mob = mobAt(state.level, nx, ny);
   if (mob) { engage(mob); return; } // you charge them where they stand
   state.x = nx; state.y = ny; state.steps++; markVisited();
@@ -152,7 +173,8 @@ async function onEnterCell(raw: string): Promise<void> {
   }
   if (raw === "E") {
     dlog("Daylight."); await sleep(300);
-    app.openTown("You climb out of the Old Stair, blinking against the grey sky."); return;
+    state.level = 0; state.x = 13; state.y = 2; state.dir = 2; // on the street, back to the stair door
+    app.openTown("You climb out of the Old Stair into the harbor night."); return;
   }
   if (raw === "B" && !state.bossDown) {
     dlog("The dark ahead breathes. Something crowned in flame rises to its feet.");
@@ -181,8 +203,16 @@ function doTurn(d: number): void {
   else turn(d);
 }
 function doStep(back: boolean): void {
-  if (net.role === "guest") net.send({t: "input", a: back ? "back" : "fwd"});
-  else step(back);
+  if (net.role === "guest") {
+    // a guest bumping the trading stall opens their own side of the post
+    if (state?.level === 0) {
+      const f = DIRV[state.dir], s = back ? -1 : 1;
+      if (cellAt(0, state.x + f[0] * s, state.y + f[1] * s) === "R") { app.openTrade(); return; }
+    }
+    net.send({t: "input", a: back ? "back" : "fwd"});
+    return;
+  }
+  step(back);
 }
 
 export function bindDungeonControls(): void {

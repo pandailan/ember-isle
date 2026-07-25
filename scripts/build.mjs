@@ -14,9 +14,10 @@ const result = await esbuild.build({
 // Escape any sequence that would terminate the inline script tag early.
 const js = result.outputFiles[0].text.replace(/<\/script>/gi, "<\\/script>");
 
+// replacer function: a literal replacement string would mangle `$`-sequences in the JS
 const html = readFileSync("src/page.html", "utf8").replace(
   "<!--BUNDLE-->",
-  `<script>\n${js}</script>`,
+  () => `<script>\n${js}</script>`,
 );
 if (html.includes("<!--BUNDLE-->")) throw new Error("bundle placeholder not replaced");
 

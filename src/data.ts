@@ -40,7 +40,22 @@ export const GROUPS: Record<number, string[][]> = {
   2:[["orc"],["orc","gob","gob"],["wra"],["cul","ske"],["orc","orc"],["gol"],["cul","wra"],["ske","ske","ske"],["gol","cul"]],
 };
 
+/** Town cells that stop you and open something when you walk into them. */
+export const TOWN_DOORS = "TPMOH"; // tavern, provisions, temple, old stair, harbor
+export const TOWN_PROPS = "GR";    // signal fire, trading stall (free-standing)
+export const TOWN_SOLID = TOWN_DOORS + TOWN_PROPS;
+
 export const MAPS: Record<number, string[]> = {
+  0:["###############",
+     "#T###P###M###O#",
+     "#.............#",
+     "#.##.......##.#",
+     "#......G......#",
+     "#.##.......##.#",
+     "#......R......#",
+     "#.............#",
+     "######H########",
+     "###############"],
   1:["###############",
      "#E....#...#..C#",
      "#.###.#.#.#.#.#",
@@ -68,7 +83,11 @@ export const MAPS: Record<number, string[]> = {
      "###############"],
 };
 
-export const LEVEL_NAMES: Record<number, string> = {1:"The Ember Caves · Depth I", 2:"The Ember Deep · Depth II"};
+export const LEVEL_NAMES: Record<number, string> = {
+  0:"Vhalis Harbor · Night",
+  1:"The Ember Caves · Depth I",
+  2:"The Ember Deep · Depth II",
+};
 
 export const CHESTS: Record<string, ChestLoot> = {
   "1:13,1":{gold:60, potions:1, note:"a smuggler's cache"},

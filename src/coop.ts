@@ -304,7 +304,7 @@ export function initCoop(): void {
       if (m.t === "input" && currentScreen === "scr-dungeon") {
         const a = m.a as string;
         if (a === "left") app.turn(-1); else if (a === "right") app.turn(1);
-        else if (a === "fwd") app.step(false); else if (a === "back") app.step(true);
+        else if (a === "fwd") app.step(false, true); else if (a === "back") app.step(true, true);
         else if (a === "potion") app.usePotionField();
       } else if (m.t === "choice" && remoteResolve) {
         remoteResolve(typeof m.i === "number" ? m.i : -1);

@@ -1,5 +1,6 @@
-import { MAPS, LEVEL_NAMES, DIRV, DIRN, ENEMIES } from "./data";
+import { MAPS, LEVEL_NAMES, DIRV, DIRN, ENEMIES, TOWN_DOORS } from "./data";
 import { state, cellAt, mobAt } from "./state";
+import { net } from "./net";
 import { $, rnd, reduceMotion } from "./util";
 
 export const view = document.getElementById("view") as HTMLCanvasElement;
@@ -79,6 +80,56 @@ function wallTextures(): HTMLCanvasElement[] {
   return wallTexCache;
 }
 
+/* Timber-framed plaster facades for the harbor town. */
+let houseTexCache: HTMLCanvasElement[] | null = null;
+
+function makeHouseTexture(seed: number): HTMLCanvasElement {
+  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128;
+  const c = cv.getContext("2d")!;
+  let pi = 0;
+  const pr = () => { const s = Math.sin(seed * 71.3 + (pi++) * 127.1) * 43758.5453; return s - Math.floor(s); };
+  // weathered plaster
+  c.fillStyle = "#6b6355"; c.fillRect(0, 0, 128, 128);
+  for (let k = 0; k < 60; k++) {
+    c.fillStyle = `rgba(${90 + pr() * 40 | 0},${84 + pr() * 34 | 0},${70 + pr() * 28 | 0},.25)`;
+    c.beginPath(); c.arc(pr() * 128, pr() * 128, 4 + pr() * 12, 0, 7); c.fill();
+  }
+  // timber frame
+  c.fillStyle = "#241a10";
+  c.fillRect(0, 0, 128, 9); c.fillRect(0, 119, 128, 9);
+  c.fillRect(0, 0, 8, 128); c.fillRect(120, 0, 8, 128);
+  c.fillRect(60, 0, 7, 128);
+  if (pr() < 0.7) { // a diagonal brace
+    c.save(); c.translate(34, 64); c.rotate(pr() < 0.5 ? 0.5 : -0.5);
+    c.fillRect(-6, -60, 7, 120); c.restore();
+  }
+  // a warm-lit window
+  if (pr() < 0.8) {
+    const wxp = 76 + pr() * 18, wyp = 26 + pr() * 40;
+    c.fillStyle = "#241a10"; c.fillRect(wxp - 3, wyp - 3, 30, 34);
+    c.fillStyle = `rgba(240,180,80,${0.75 + pr() * 0.2})`;
+    c.fillRect(wxp, wyp, 24, 28);
+    c.fillStyle = "#241a10";
+    c.fillRect(wxp + 10.5, wyp, 3, 28); c.fillRect(wxp, wyp + 12.5, 24, 3);
+  }
+  for (let k = 0; k < 200; k++) { // grime
+    c.fillStyle = pr() < 0.5 ? "rgba(0,0,0,.08)" : "rgba(232,217,176,.04)";
+    c.fillRect(pr() * 128, pr() * 128, 1.4, 1.4);
+  }
+  return cv;
+}
+
+function houseTextures(): HTMLCanvasElement[] {
+  if (!houseTexCache) houseTexCache = [makeHouseTexture(1), makeHouseTexture(2), makeHouseTexture(3)];
+  return houseTexCache;
+}
+
+function texFor(wx: number, wy: number): HTMLCanvasElement {
+  return state.level === 0
+    ? houseTextures()[cellHash(wx, wy) % 3]
+    : wallTextures()[cellHash(wx, wy) % 5];
+}
+
 /** Stable per-cell randomness so both co-op screens dress the dungeon alike. */
 const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
 
@@ -129,7 +180,7 @@ const DEPTH_DIM = [0, 0.1, 0.3, 0.5, 0.66];
 
 function drawFrontWall(d: number, l: number, wx: number, wy: number): void {
   const x0 = px(d, l - 0.5), x1 = px(d, l + 0.5), y0 = TYP(d), y1 = BYP(d), h = y1 - y0, w = x1 - x0;
-  const tex = wallTextures()[cellHash(wx, wy) % 5];
+  const tex = texFor(wx, wy);
   const tiles = w > 190 ? 2 : 1; // near faces get two texture tiles to stay crisp
   for (let t = 0; t < tiles; t++) ctx.drawImage(tex, x0 + (w / tiles) * t, y0, w / tiles, h);
   ctx.fillStyle = `rgba(8,5,3,${DEPTH_DIM[d]})`; ctx.fillRect(x0, y0, w, h);
@@ -143,7 +194,7 @@ function drawFrontWall(d: number, l: number, wx: number, wy: number): void {
 function drawSideWall(d: number, u: number, wx: number, wy: number): void {
   const xa = px(d, u), xb = px(d + 1, u);
   const yat = TYP(d), yab = BYP(d), ybt = TYP(d + 1), ybb = BYP(d + 1);
-  const tex = wallTextures()[cellHash(wx, wy) % 5];
+  const tex = texFor(wx, wy);
   const strips = d <= 1 ? 12 : 8; // perspective-mapped texture strips
   const sw = tex.width / strips;
   ctx.save();
@@ -166,37 +217,102 @@ function drawSideWall(d: number, u: number, wx: number, wy: number): void {
   ctx.beginPath(); ctx.moveTo(xa, yat); ctx.lineTo(xa, yab); ctx.stroke();
 }
 
-/** A wall-mounted torch: bracket, breathing flame, and a pool of light. */
+/** A proper wall sconce: ring mount, shaft leaning off the wall, flame at its tip. */
 function drawTorch(d: number, u: number, wx: number, wy: number): void {
+  if (d === 0) return; // the one at your shoulder would fill the screen
   const xa = px(d, u), xb = px(d + 1, u);
   const tx = xa + (xb - xa) * 0.5;
-  const yt = TYP(d) + (TYP(d + 1) - TYP(d)) * 0.5;
-  const yb = BYP(d) + (BYP(d + 1) - BYP(d)) * 0.5;
-  const ty = yt + (yb - yt) * 0.34;
-  const s = HH[Math.min(d + 1, 4)] * (d === 0 ? 0.42 : 0.55);
+  const yT = TYP(d) + (TYP(d + 1) - TYP(d)) * 0.5;
+  const yB = BYP(d) + (BYP(d + 1) - BYP(d)) * 0.5;
+  const my = yT + (yB - yT) * 0.52; // mount point on the wall
+  const s = HH[Math.min(d + 1, 4)] * 0.5;
   const phase = (cellHash(wx, wy) % 97) / 97 * 6.28;
   const fl = reduceMotion ? 1 : 0.85 + 0.22 * Math.sin(animT * 9 + phase) + 0.08 * Math.sin(animT * 23 + phase * 2);
-  // pool of light on the stone
-  const glow = ctx.createRadialGradient(tx, ty, 1, tx, ty, s * 2.6 * fl);
-  glow.addColorStop(0, "rgba(240,180,80,.28)");
+  const tilt = (u < 0 ? 1 : -1) * 0.32; // leans off the wall toward the corridor
+  const tipX = tx + Math.sin(tilt) * s * 0.62, tipY = my - Math.cos(tilt) * s * 0.62;
+  // pool of light around the flame
+  const glow = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, s * 2.6 * fl);
+  glow.addColorStop(0, "rgba(240,180,80,.3)");
   glow.addColorStop(0.5, "rgba(224,154,60,.12)");
   glow.addColorStop(1, "rgba(224,154,60,0)");
-  ctx.fillStyle = glow; ctx.fillRect(tx - s * 3, ty - s * 3, s * 6, s * 6);
-  // bracket
-  ctx.fillStyle = "#20150b";
-  ctx.fillRect(tx - s * 0.07, ty, s * 0.14, s * 0.55);
-  ctx.fillRect(tx - s * 0.16, ty + s * 0.5, s * 0.32, s * 0.1);
-  // flame
-  const fh = s * 0.65 * fl;
-  const fg = ctx.createRadialGradient(tx, ty - fh * 0.35, 0, tx, ty - fh * 0.35, fh);
+  ctx.fillStyle = glow; ctx.fillRect(tipX - s * 3, tipY - s * 3, s * 6, s * 6);
+  // iron ring mount on the stone
+  ctx.fillStyle = "#17100a";
+  ctx.fillRect(tx - s * 0.11, my - s * 0.06, s * 0.22, s * 0.24);
+  // shaft with wrapped head
+  ctx.save(); ctx.translate(tx, my); ctx.rotate(tilt);
+  ctx.fillStyle = "#3a2a18"; ctx.fillRect(-s * 0.055, -s * 0.62, s * 0.11, s * 0.68);
+  ctx.fillStyle = "#57422d"; ctx.fillRect(-s * 0.085, -s * 0.74, s * 0.17, s * 0.16);
+  ctx.restore();
+  // flame licking up from the head
+  const fh = s * 0.55 * fl;
+  const fg = ctx.createRadialGradient(tipX, tipY - fh * 0.4, 0, tipX, tipY - fh * 0.4, fh);
   fg.addColorStop(0, "rgba(255,242,190,.95)");
   fg.addColorStop(0.35, "rgba(242,172,64,.85)");
   fg.addColorStop(0.7, "rgba(200,80,40,.4)");
   fg.addColorStop(1, "rgba(200,80,40,0)");
   ctx.fillStyle = fg;
   ctx.beginPath();
-  ctx.ellipse(tx, ty - fh * 0.35, fh * 0.5, fh * 0.85, (reduceMotion ? 0 : Math.sin(animT * 11 + phase) * 0.12), 0, Math.PI * 2);
+  ctx.ellipse(tipX, tipY - fh * 0.4, fh * 0.45, fh * 0.8,
+    (reduceMotion ? 0 : Math.sin(animT * 11 + phase) * 0.12) + tilt * 0.4, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/** Town doors: facade texture, arched door, lantern, and a hanging trade sign. */
+function drawDoorFace(d: number, l: number, door: string, wx: number, wy: number): void {
+  drawFrontWall(d, l, wx, wy);
+  const x0 = px(d, l - 0.5), x1 = px(d, l + 0.5), y0 = TYP(d), y1 = BYP(d);
+  const w = x1 - x0, h = y1 - y0, cx0 = x0 + w / 2;
+  // arched door
+  const dw = w * 0.34, dh = h * 0.52, dx = cx0 - dw / 2, dy = y1 - dh;
+  ctx.fillStyle = "#150d06";
+  ctx.beginPath();
+  ctx.moveTo(dx, y1); ctx.lineTo(dx, dy + dw / 2);
+  ctx.arc(cx0, dy + dw / 2, dw / 2, Math.PI, 0);
+  ctx.lineTo(dx + dw, y1); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#3a2a18"; ctx.lineWidth = Math.max(1, w * 0.012); ctx.stroke();
+  ctx.fillStyle = "#8a7a52"; // handle
+  ctx.beginPath(); ctx.arc(cx0 + dw * 0.28, y1 - dh * 0.4, Math.max(1, w * 0.012), 0, Math.PI * 2); ctx.fill();
+  // lantern beside the door
+  const lx = dx - w * 0.09, ly = dy + dh * 0.18;
+  const lg = ctx.createRadialGradient(lx, ly, 1, lx, ly, w * 0.14);
+  lg.addColorStop(0, "rgba(240,180,80,.5)"); lg.addColorStop(1, "rgba(240,180,80,0)");
+  ctx.fillStyle = lg; ctx.fillRect(lx - w * 0.15, ly - w * 0.15, w * 0.3, w * 0.3);
+  ctx.fillStyle = "#f0b450"; ctx.fillRect(lx - w * 0.014, ly - w * 0.02, w * 0.028, w * 0.04);
+  // hanging sign
+  const sy = dy - h * 0.16, sw2 = w * 0.24, sh2 = h * 0.13, sx = cx0 - sw2 / 2;
+  ctx.strokeStyle = "#241a10"; ctx.lineWidth = Math.max(1, w * 0.008);
+  ctx.beginPath(); ctx.moveTo(sx + sw2 * 0.15, sy); ctx.lineTo(sx + sw2 * 0.15, sy - h * 0.05);
+  ctx.moveTo(sx + sw2 * 0.85, sy); ctx.lineTo(sx + sw2 * 0.85, sy - h * 0.05); ctx.stroke();
+  ctx.fillStyle = "#241a10"; ctx.fillRect(sx, sy, sw2, sh2);
+  ctx.fillStyle = "#33271b"; ctx.fillRect(sx + 1.5, sy + 1.5, sw2 - 3, sh2 - 3);
+  // the sign's device
+  const icx = cx0, icy = sy + sh2 / 2, is = Math.min(sw2, sh2) * 0.36;
+  ctx.save(); ctx.translate(icx, icy);
+  if (door === "T") {            // a mug for the Salted Gull
+    ctx.fillStyle = "#e0b24c"; ctx.fillRect(-is * 0.6, -is * 0.5, is, is);
+    ctx.strokeStyle = "#e0b24c"; ctx.lineWidth = Math.max(1, is * 0.2);
+    ctx.beginPath(); ctx.arc(is * 0.55, 0, is * 0.4, -1.2, 1.2); ctx.stroke();
+  } else if (door === "P") {     // a flask for provisions
+    ctx.fillStyle = "#c8502f";
+    ctx.beginPath(); ctx.arc(0, is * 0.25, is * 0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(-is * 0.2, -is * 0.7, is * 0.4, is * 0.5);
+  } else if (door === "M") {     // the tide's wave
+    ctx.strokeStyle = "#7fa8bd"; ctx.lineWidth = Math.max(1, is * 0.22);
+    ctx.beginPath(); ctx.arc(-is * 0.4, 0, is * 0.4, Math.PI, 0);
+    ctx.arc(is * 0.4, 0, is * 0.4, Math.PI, 0, true); ctx.stroke();
+  } else if (door === "O") {     // steps into the dark
+    ctx.fillStyle = "#b8b0a0";
+    ctx.fillRect(-is * 0.7, -is * 0.5, is * 0.5, is * 0.3);
+    ctx.fillRect(-is * 0.2, -is * 0.15, is * 0.5, is * 0.3);
+    ctx.fillRect(is * 0.3, is * 0.2, is * 0.5, is * 0.3);
+  } else if (door === "H") {     // the harbor's anchor
+    ctx.strokeStyle = "#b8c4cc"; ctx.lineWidth = Math.max(1, is * 0.18);
+    ctx.beginPath(); ctx.moveTo(0, -is * 0.6); ctx.lineTo(0, is * 0.4);
+    ctx.moveTo(-is * 0.45, -is * 0.25); ctx.lineTo(is * 0.45, -is * 0.25);
+    ctx.arc(0, is * 0.05, is * 0.5, 0.5, Math.PI - 0.5); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** A dark timber crossing the corridor ceiling between two depth planes. */
@@ -215,12 +331,41 @@ function drawBeam(d: number): void {
   ctx.beginPath(); ctx.moveTo(xt(t0, -0.55), yt(t0)); ctx.lineTo(xt(t0, 0.55), yt(t0)); ctx.stroke();
 }
 
-/** Puddles that catch the torchlight, rubble, and cracked flagstones. */
+/** Puddles that catch the torchlight, rubble, and cracked flagstones —
+    or, in town: lamp posts, crates, and rain-washed cobbles. */
 function drawFloorProps(d: number, l: number, wx: number, wy: number): void {
   const h = cellHash(wx, wy);
   const s = HH[Math.min(d + 1, 4)];
   const cxm = CX + l * (CW[d] + CW[Math.min(d + 1, 4)]) / 2;
   const fy = CY + HH[Math.min(d + 1, 4)] * 0.9;
+  if (state.level === 0) {
+    if (h % 6 === 2 && l !== 0) { // lamp post (kept off the walking line)
+      const lh = s * 1.5;
+      ctx.fillStyle = "#1a1410";
+      ctx.fillRect(cxm - s * 0.035, fy - lh, s * 0.07, lh);
+      ctx.fillRect(cxm - s * 0.12, fy - lh, s * 0.24, s * 0.05);
+      const lg = ctx.createRadialGradient(cxm, fy - lh + s * 0.12, 1, cxm, fy - lh + s * 0.12, s * 0.55);
+      lg.addColorStop(0, "rgba(240,190,110,.55)"); lg.addColorStop(1, "rgba(240,190,110,0)");
+      ctx.fillStyle = lg; ctx.fillRect(cxm - s, fy - lh - s * 0.5, s * 2, s * 1.4);
+      ctx.fillStyle = "#f0c060";
+      ctx.fillRect(cxm - s * 0.045, fy - lh + s * 0.06, s * 0.09, s * 0.12);
+    } else if (h % 7 === 3 && l !== 0) { // stacked crates & a barrel
+      ctx.fillStyle = "#3a2c1c"; ctx.fillRect(cxm - s * 0.3, fy - s * 0.34, s * 0.34, s * 0.34);
+      ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.lineWidth = 1;
+      ctx.strokeRect(cxm - s * 0.3, fy - s * 0.34, s * 0.34, s * 0.34);
+      ctx.fillStyle = "#46362a";
+      ctx.beginPath(); ctx.ellipse(cxm + s * 0.22, fy - s * 0.18, s * 0.14, s * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.35)";
+      ctx.beginPath(); ctx.ellipse(cxm + s * 0.22, fy - s * 0.26, s * 0.14, s * 0.05, 0, 0, Math.PI * 2); ctx.stroke();
+    } else if (h % 5 === 0) { // rain still standing between the cobbles
+      ctx.fillStyle = "rgba(26,36,52,.5)";
+      ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.1, s * 0.45, s * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+      const sh2 = reduceMotion ? 0.5 : 0.3 + 0.5 * Math.abs(Math.sin(animT * 1.5 + h));
+      ctx.fillStyle = `rgba(180,200,220,${0.08 + 0.1 * sh2})`;
+      ctx.beginPath(); ctx.ellipse(cxm - s * 0.1, fy - s * 0.12, s * 0.18, s * 0.04, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    return;
+  }
   if (h % 5 === 0) { // standing water
     ctx.fillStyle = "rgba(24,38,52,.6)";
     ctx.beginPath(); ctx.ellipse(cxm + ((h % 13) - 6) * s * 0.03, fy - s * 0.1, s * 0.55, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
@@ -292,6 +437,43 @@ function drawFeature(c: string, d: number, l: number): void {
     const gl = ctx.createRadialGradient(cxm, fy - s * 0.7, 4, cxm, fy - s * 0.7, s * 1.5 * pulse);
     gl.addColorStop(0, `rgba(200,80,47,${0.34 * pulse})`); gl.addColorStop(1, "rgba(200,80,47,0)");
     ctx.fillStyle = gl; ctx.fillRect(cxm - s * 1.8, fy - s * 2.3, s * 3.6, s * 2.8);
+  } else if (c === "G") { // the signal fire: stone ring, driftwood, maybe flame
+    ctx.fillStyle = "#3a3a3a";
+    ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.06, s * 0.5, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#2a1d10";
+    for (let i = -1; i <= 1; i++) {
+      ctx.save(); ctx.translate(cxm + i * s * 0.12, fy - s * 0.16); ctx.rotate(i * 0.5);
+      ctx.fillRect(-s * 0.05, -s * 0.28, s * 0.1, s * 0.4); ctx.restore();
+    }
+    const lit = net.role === "host" || net.connected;
+    if (lit) {
+      const fl2 = reduceMotion ? 1 : 0.8 + 0.25 * Math.sin(animT * 8);
+      const fh2 = s * 0.8 * fl2;
+      const fg2 = ctx.createRadialGradient(cxm, fy - s * 0.45, 2, cxm, fy - s * 0.45, fh2);
+      fg2.addColorStop(0, "rgba(255,242,190,.95)");
+      fg2.addColorStop(0.4, "rgba(242,172,64,.8)");
+      fg2.addColorStop(1, "rgba(200,80,40,0)");
+      ctx.fillStyle = fg2;
+      ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.5, fh2 * 0.45, fh2 * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = "rgba(120,130,140,.25)"; // cold ash awaiting a spark
+      ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.18, s * 0.2, s * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (c === "R") { // the trading stall: posts, striped canopy, counter
+    ctx.fillStyle = "#241a10";
+    ctx.fillRect(cxm - s * 0.5, fy - s * 1.0, s * 0.07, s * 1.0);
+    ctx.fillRect(cxm + s * 0.43, fy - s * 1.0, s * 0.07, s * 1.0);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i % 2 ? "#8a3a28" : "#b8a888";
+      ctx.beginPath();
+      ctx.moveTo(cxm - s * 0.6 + i * s * 0.24, fy - s * 1.0);
+      ctx.lineTo(cxm - s * 0.36 + i * s * 0.24, fy - s * 1.0);
+      ctx.lineTo(cxm - s * 0.4 + i * s * 0.24, fy - s * 0.82);
+      ctx.lineTo(cxm - s * 0.64 + i * s * 0.24, fy - s * 0.82);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = "#3a2a18"; ctx.fillRect(cxm - s * 0.55, fy - s * 0.4, s * 1.1, s * 0.12);
+    ctx.fillStyle = "#57422d"; ctx.fillRect(cxm - s * 0.55, fy - s * 0.28, s * 1.1, s * 0.28);
   } else if (c === "E") { // way out: daylight arch with a falling shaft of light
     const shimmer = reduceMotion ? 0 : Math.sin(animT * 1.7) * 0.03;
     ctx.fillStyle = `rgba(232,217,176,${0.16 + shimmer})`;
@@ -331,33 +513,58 @@ function drawMob(key: string, d: number, l: number, wx: number, wy: number): voi
 }
 
 export function renderView(): void {
-  // ceiling
-  let g = ctx.createLinearGradient(0, 0, 0, CY);
-  g.addColorStop(0, "#040302"); g.addColorStop(1, "#1a1209");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, CY);
-  // floor
-  g = ctx.createLinearGradient(0, CY, 0, H);
-  g.addColorStop(0, "#130d07"); g.addColorStop(1, "#342718");
-  ctx.fillStyle = g; ctx.fillRect(0, CY, W, H);
-  // perspective seams: flagstone rows and ceiling beams
+  const town = state.level === 0;
+  if (town) {
+    // night sky over the harbor
+    let g = ctx.createLinearGradient(0, 0, 0, CY);
+    g.addColorStop(0, "#070b16"); g.addColorStop(0.75, "#101322"); g.addColorStop(1, "#1c1a18");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, CY);
+    for (let i = 0; i < 34; i++) { // stars
+      const tw = reduceMotion ? 0.7 : 0.4 + 0.6 * Math.abs(Math.sin(animT * (0.4 + prand(i + 9)) + i));
+      ctx.fillStyle = `rgba(232,217,176,${0.45 * tw * prand(i + 40)})`;
+      ctx.fillRect(prand(i) * W, prand(i + 80) * CY * 0.8, 1.4, 1.4);
+    }
+    ctx.fillStyle = "rgba(220,222,210,.85)"; // the moon and its shadowed side
+    ctx.beginPath(); ctx.arc(W * 0.82, H * 0.13, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#0b0f18";
+    ctx.beginPath(); ctx.arc(W * 0.82 + 4.5, H * 0.13 - 2.5, 9.5, 0, Math.PI * 2); ctx.fill();
+    // cobbled street
+    g = ctx.createLinearGradient(0, CY, 0, H);
+    g.addColorStop(0, "#14161d"); g.addColorStop(1, "#2b2c33");
+    ctx.fillStyle = g; ctx.fillRect(0, CY, W, H);
+  } else {
+    // cavern dark
+    let g = ctx.createLinearGradient(0, 0, 0, CY);
+    g.addColorStop(0, "#040302"); g.addColorStop(1, "#1a1209");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, CY);
+    g = ctx.createLinearGradient(0, CY, 0, H);
+    g.addColorStop(0, "#130d07"); g.addColorStop(1, "#342718");
+    ctx.fillStyle = g; ctx.fillRect(0, CY, W, H);
+  }
+  // perspective seams: flagstone rows (and cave ceiling lines)
   for (let p = 4; p >= 1; p--) {
     const a = 0.06 + (4 - p) * 0.05;
     ctx.strokeStyle = `rgba(0,0,0,${a})`; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, BYP(p)); ctx.lineTo(W, BYP(p)); ctx.stroke();
-    ctx.strokeStyle = `rgba(232,217,176,${a * 0.28})`;
-    ctx.beginPath(); ctx.moveTo(0, TYP(p)); ctx.lineTo(W, TYP(p)); ctx.stroke();
+    if (!town) {
+      ctx.strokeStyle = `rgba(232,217,176,${a * 0.28})`;
+      ctx.beginPath(); ctx.moveTo(0, TYP(p)); ctx.lineTo(W, TYP(p)); ctx.stroke();
+    }
   }
-  // converging flagstone joints
+  // converging floor joints
   ctx.strokeStyle = "rgba(0,0,0,.15)"; ctx.lineWidth = 1;
   for (let u = -3.5; u <= 3.5; u++) {
     ctx.beginPath(); ctx.moveTo(px(4, u), BYP(4)); ctx.lineTo(px(0, u), BYP(0)); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(px(4, u), TYP(4)); ctx.lineTo(px(0, u), TYP(0)); ctx.stroke();
+    if (!town) { ctx.beginPath(); ctx.moveTo(px(4, u), TYP(4)); ctx.lineTo(px(0, u), TYP(0)); ctx.stroke(); }
   }
 
   const f = DIRV[state.dir], r = DIRV[(state.dir + 1) % 4];
   const at = (d: number, l: number) =>
     cellAt(state.level, state.x + f[0] * d + r[0] * l, state.y + f[1] * d + r[1] * l);
-  const isWall = (d: number, l: number) => at(d, l) === "#";
+  const isWall = (d: number, l: number) => {
+    const c = at(d, l);
+    return c === "#" || (town && TOWN_DOORS.includes(c));
+  };
 
   for (let d = 4; d >= 0; d--) {
     const feats: [string, number, number][] = [];
@@ -369,24 +576,28 @@ export function renderView(): void {
     for (const l of lats) {
       const wx = state.x + f[0] * d + r[0] * l, wy = state.y + f[1] * d + r[1] * l;
       if (isWall(d, l)) {
+        const c = at(d, l);
         if (d < 4) { // side faces toward corridor center, some carrying torches
           if (l > 0 && !isWall(d, l - 1)) {
             drawSideWall(d, l - 0.5, wx, wy);
-            if (d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l - 0.5, wx, wy);
+            if (!town && d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l - 0.5, wx, wy);
           }
           if (l < 0 && !isWall(d, l + 1)) {
             drawSideWall(d, l + 0.5, wx, wy);
-            if (d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l + 0.5, wx, wy);
+            if (!town && d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l + 0.5, wx, wy);
           }
         }
-        if (d >= 1) drawFrontWall(d, l, wx, wy);
+        if (d >= 1) {
+          if (town && TOWN_DOORS.includes(c)) drawDoorFace(d, l, c, wx, wy);
+          else drawFrontWall(d, l, wx, wy);
+        }
       } else {
         const c = at(d, l);
         // (you don't see the arch you're standing in)
         if (c !== "." && c !== "#" && Math.abs(l) <= 1 && d <= 3 && !(c === "E" && d === 0 && l === 0))
           feats.push([c, d, l]);
         if (Math.abs(l) <= 2 && d >= 1 && d <= 3) props.push([d, l, wx, wy]);
-        if (l === 0 && d >= 1 && d <= 3 && cellHash(wx, wy) % 4 === 2) beams.push(d);
+        if (!town && l === 0 && d >= 1 && d <= 3 && cellHash(wx, wy) % 4 === 2) beams.push(d);
         if (Math.abs(l) <= 2 && d >= 1 && d <= 3) {
           const mob = mobAt(state.level, wx, wy);
           if (mob) mobsHere.push([mob.key, d, l, wx, wy]);
@@ -398,13 +609,17 @@ export function renderView(): void {
     for (const [c, fd, fl] of feats) drawFeature(c, fd, fl);
     for (const [k, md, ml, wx, wy] of mobsHere) drawMob(k, md, ml, wx, wy);
   }
-  // drifting embers
-  drawSparks();
-  // torch glow — a slow breath rather than random jitter
+  if (!town) drawSparks(); // embers belong to the deep
+  // ambient light — the party's torch below, cool moonlight above ground
   const tflick = reduceMotion ? 1 : 0.94 + 0.06 * Math.sin(animT * 5.3) + 0.03 * Math.sin(animT * 13.7);
   const tg = ctx.createRadialGradient(CX, CY + 16, 26, CX, CY + 16, 290 * tflick);
-  tg.addColorStop(0, "rgba(224,154,60,.13)");
-  tg.addColorStop(0.45, "rgba(224,154,60,.04)");
+  if (town) {
+    tg.addColorStop(0, "rgba(150,170,205,.07)");
+    tg.addColorStop(0.5, "rgba(150,170,205,.02)");
+  } else {
+    tg.addColorStop(0, "rgba(224,154,60,.13)");
+    tg.addColorStop(0.45, "rgba(224,154,60,.04)");
+  }
   tg.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = tg; ctx.fillRect(0, 0, W, H);
   // darkness vignette
@@ -427,7 +642,8 @@ export function renderAutomap(): void {
   const vis = new Set(state.visited[state.level]);
   const ox = (120 - cs * mw) / 2, oy = (120 - cs * mh) / 2;
   const FEAT_HUE: Record<string, string> =
-    {C:"#e0b24c", S:"#e8d9b0", U:"#e8d9b0", F:"#7fa8bd", B:"#c8502f", E:"#8fae6a"};
+    {C:"#e0b24c", S:"#e8d9b0", U:"#e8d9b0", F:"#7fa8bd", B:"#c8502f", E:"#8fae6a",
+     T:"#e0b24c", P:"#c8502f", M:"#7fa8bd", O:"#b8b0a0", H:"#8fae6a", G:"#e09a3c", R:"#b8a888"};
   for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
     if (!vis.has(x + "," + y)) continue;
     const c = cellAt(state.level, x, y);

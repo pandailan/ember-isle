@@ -1,55 +1,51 @@
 import { state, save, allCards } from "./state";
 import { app } from "./bus";
-import { show, renderPlaques } from "./ui";
+import { show } from "./ui";
 import { $ } from "./util";
 import { WBONUS, WCOST, WNAME, ABONUS, ACOST, ANAME } from "./data";
 import { net } from "./net";
 import { setScene, sfx } from "./audio";
 
+/** The harbor town is a place you walk: level 0 of the same engine. */
 export function openTown(msg?: string): void {
-  state.inDungeon = false; save();
+  state.inDungeon = false;
+  if (state.level !== 0) { state.level = 0; state.x = 7; state.y = 5; state.dir = 0; }
+  save();
   setScene("town");
-  $("town-gold").textContent = String(state.gold);
-  $("town-potions").textContent = String(state.potions);
-  $("town-msg").textContent = msg || "";
-  renderPlaques("town-plaques");
-  const menu = $("town-menu"); menu.innerHTML = "";
-  const opts: [string, string, () => void][] = [
-    ["The Salted Gull", "company, recruits & rest", () => app.openTavern()],
-    ["Ember & Anchor Provisions", "potions & gear", openShop],
-    ["Temple of the Tide", "raise the fallen", () => openTemple()],
-    ["The Old Stair", "descend into the caves", () => app.enterDungeon(true)],
-    ["The Harbor", state.heart ? "a ship waits" : "no ship will sail", townHarbor],
-    ["The Signal Fire",
-      net.role === "host" ? (net.connected ? "companion linked" : `code ${net.code} — waiting`) : "invite a friend (co-op)",
-      townSignal],
-  ];
-  if (net.connected) opts.push(["The Trading Post", "barter cards with your companion", () => app.openTrade()]);
-  for (const [t, h, fn] of opts) {
-    const b = document.createElement("button");
-    b.innerHTML = `<span>${t}</span><span class="hint">${h}</span>`;
-    b.onclick = fn; menu.appendChild(b);
+  app.enterWalk(msg ?? null);
+}
+
+/** Walking into a door or plaza fixture. */
+export function townDoorBump(c: string): void {
+  switch (c) {
+    case "T": app.openTavern(); break;
+    case "P": openShop(); break;
+    case "M": openTemple(); break;
+    case "O": app.enterDungeon(true); break;
+    case "H":
+      if (state.heart) app.showEnding();
+      else app.dlog("The harbormaster shakes his head. “While the Ember burns below, the fog holds the bay.”");
+      break;
+    case "G": townSignal(); break;
+    case "R":
+      if (net.connected) app.openTrade();
+      else app.dlog("An empty stall. With a companion linked, you could barter cards here.");
+      break;
   }
-  show("scr-town");
 }
 
 function townSignal(): void {
   if (net.role === "host") {
-    $("town-msg").textContent = net.connected
+    app.dlog(net.connected
       ? "The fire burns steady. Your companion walks with you."
-      : `The fire is lit — share the code ${net.code}. On another device, choose “Join a Friend” on the title screen.`;
+      : `The fire is lit — share the code ${net.code}. A friend Joins from their title screen.`);
     return;
   }
-  $("town-msg").textContent = "You stack driftwood and strike flint…";
+  app.dlog("You stack driftwood and strike flint…");
   net.host((codeOrErr, ok) => {
-    if (ok) openTown(`The signal fire burns. Share the code ${codeOrErr} — a friend can now Join from their title screen while you play. They'll command your rear two adventurers in battle.`);
-    else openTown("The fire gutters out — the far shore does not answer. (Co-op needs an internet connection.)");
+    if (ok) app.dlog(`The signal fire roars up! Share the code ${codeOrErr} — your friend Joins from their title screen.`);
+    else app.dlog("The fire gutters out — the far shore does not answer. (Co-op needs internet.)");
   });
-}
-
-function townHarbor(): void {
-  if (state.heart) { app.showEnding(); }
-  else $("town-msg").textContent = "The harbormaster shakes his head. “While the Ember burns below, the fog holds the bay. Bring me proof it's out.”";
 }
 
 export function showEnding(): void {

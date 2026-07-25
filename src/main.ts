@@ -2,11 +2,11 @@ import { app } from "./bus";
 import { state, setState, loadSave, save, alive } from "./state";
 import { show } from "./ui";
 import { $ } from "./util";
-import { openTown, showEnding, bindTownScreens } from "./town";
+import { openTown, townDoorBump, showEnding, bindTownScreens } from "./town";
 import { openDraft, openTavern, bindTavern } from "./tavern";
 import {
-  enterDungeon, backToDungeon, turn, step, usePotionField,
-  bindDungeonControls, rescueParty, combatWon, combatFled,
+  enterDungeon, enterWalk, backToDungeon, turn, step, usePotionField,
+  bindDungeonControls, rescueParty, combatWon, combatFled, dlog,
 } from "./dungeon";
 import { startCombat, combatSnapshot } from "./combat";
 import { startRenderLoop, renderTitle } from "./render";
@@ -29,6 +29,9 @@ app.combatSnapshot = combatSnapshot;
 app.openTrade = openTradePost;
 app.combatWon = combatWon;
 app.combatFled = combatFled;
+app.townDoor = townDoorBump;
+app.dlog = dlog;
+app.enterWalk = enterWalk;
 
 /* ============================== TITLE ============================== */
 function initTitle(): void {
@@ -86,4 +89,5 @@ declare global { interface Window { __ei: unknown; } }
 window.__ei = {
   get state() { return state; },
   startCombat, enterDungeon, openTown, openTavern, save,
+  door: townDoorBump,
 };

@@ -13,8 +13,14 @@ export interface AppBus {
   showEnding(): void;
   // dungeon inputs relayed from a co-op guest
   turn(d: number): void;
-  step(back: boolean): void;
+  step(back: boolean, byGuest?: boolean): void;
   usePotionField(): void;
+  /** Walking into a town door/prop cell. */
+  townDoor(c: string): void;
+  /** Message line in the walking view. */
+  dlog(msg: string): void;
+  /** Show the first-person walking view for the current level/position. */
+  enterWalk(msg: string | null): void;
   /** Live combat view for co-op snapshots; null outside combat. */
   combatSnapshot(): {enemies: EnemyInst[]; log: string[]; title: string} | null;
   /** Outcome hooks so the dungeon can settle the engaged mob. */
