@@ -59,6 +59,11 @@ export interface GameState {
   bossDown: boolean; heart: boolean;
   steps: number; kills: number; graceLeft: number;
   inDungeon: boolean; charm?: boolean;
+  /** Co-op lending bookkeeping (host side): guest-owned card ids currently in
+      the party, the host cards they displaced, and gold owed to the guest. */
+  coopGuestIds?: string[];
+  coopDisplacedIds?: string[];
+  guestGoldOwed?: number;
 }
 
 export interface CombatState {

@@ -100,6 +100,48 @@ export function rollVisitors(state: GameState): Member[] {
 
 export function todayStamp(): string { return new Date().toDateString(); }
 
+/* ============================== WIRE SAFETY ============================== */
+const num = (v: unknown, lo: number, hi: number, fb: number): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : fb;
+};
+
+/** Rebuild a card received over the co-op link from scratch — never trust the wire. */
+export function sanitizeCard(raw: unknown): Member | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.cls !== "string" || !CLASSES[c.cls]) return null;
+  const strArr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === "string").slice(0, 12) : [];
+  const maxhp = num(c.maxhp, 1, 999, 20), maxmp = num(c.maxmp, 0, 999, 0);
+  return {
+    id: typeof c.id === "string" ? c.id.slice(0, 24) : genId(),
+    name: typeof c.name === "string" ? c.name.slice(0, 40) : "Stranger",
+    cls: c.cls,
+    rarity: num(c.rarity, 0, 3, 0) as Rarity,
+    traits: strArr(c.traits), skills: strArr(c.skills),
+    sp: num(c.sp, 0, 99, 0),
+    lvl: num(c.lvl, 1, 99, 1), xp: num(c.xp, 0, 1e6, 0),
+    maxhp, hp: num(c.hp, 0, maxhp, maxhp),
+    maxmp, mp: num(c.mp, 0, maxmp, maxmp),
+    atk: num(c.atk, 1, 99, 5), def: num(c.def, 0, 99, 3), spd: num(c.spd, 1, 99, 5),
+    wTier: num(c.wTier, 0, 3, 0), aTier: num(c.aTier, 0, 3, 0),
+    down: c.down === true,
+  };
+}
+
+/** Undo an interrupted co-op loan: drop guest cards, restore displaced hosts. */
+export function cleanupLend(s: GameState): void {
+  if (!s.coopGuestIds?.length) return;
+  const guestIds = s.coopGuestIds;
+  s.party = s.party.filter(c => !guestIds.includes(c.id));
+  for (const id of s.coopDisplacedIds ?? []) {
+    const i = s.collection.findIndex(c => c.id === id);
+    if (i >= 0 && s.party.length < 4) s.party.push(s.collection.splice(i, 1)[0]);
+  }
+  s.coopGuestIds = []; s.coopDisplacedIds = []; s.guestGoldOwed = 0;
+}
+
 /* ============================== SAVE MIGRATION ============================== */
 /** Upgrade a pre-card (v1) save in place: members become common cards. */
 export function migrateState(s: GameState & {version?: number}): GameState {

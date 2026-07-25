@@ -315,11 +315,18 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
 async function combatVictory(): Promise<void> {
   const xp = combat.enemies.reduce((a, e) => a + e.xp, 0);
   const gold = Math.round((combat.enemies.reduce((a, e) => a + e.g, 0) + ri(8)) * goldMult(state.party));
-  state.gold += gold;
   const each = Math.max(1, Math.floor(xp / alive().length));
   await sleep(500);
   sfx("victory");
-  clog(`Victory — ${gold} gold, ${each} experience each.`);
+  if (state.coopGuestIds?.length) { // split the spoils with the linked companion
+    const guestShare = Math.floor(gold / 2);
+    state.gold += gold - guestShare;
+    state.guestGoldOwed = (state.guestGoldOwed ?? 0) + guestShare;
+    clog(`Victory — ${gold} gold split with your companion, ${each} experience each.`);
+  } else {
+    state.gold += gold;
+    clog(`Victory — ${gold} gold, ${each} experience each.`);
+  }
   for (const m of alive()) {
     m.xp += each;
     while (m.xp >= xpNeed(m.lvl)) {

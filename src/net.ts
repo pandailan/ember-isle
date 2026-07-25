@@ -69,21 +69,38 @@ class Net {
     } catch (e) { this.reset(); done(String(e)); }
   }
 
+  private hbTimer: ReturnType<typeof setInterval> | null = null;
+  private lastRecv = 0;
+
   private wire(c: DataConnection): void {
     this.conn = c;
+    this.lastRecv = Date.now();
     c.on("data", d => {
+      this.lastRecv = Date.now();
       try {
         const m = (typeof d === "string" ? JSON.parse(d) : d) as NetMsg;
-        if (m && typeof m.t === "string" && this.onMessage) this.onMessage(m);
+        if (!m || typeof m.t !== "string" || m.t === "__ping") return;
+        if (this.onMessage) this.onMessage(m);
       } catch { /* ignore malformed frames */ }
     });
-    const drop = () => {
-      this.conn = null;
-      if (this.role === "guest") this.reset();
-      if (this.onPeerChange) this.onPeerChange();
-    };
-    c.on("close", drop);
-    c.on("error", drop);
+    c.on("close", () => this.dropConn());
+    c.on("error", () => this.dropConn());
+    // PeerJS close events are unreliable on abrupt peer loss — heartbeat instead.
+    this.hbTimer = setInterval(() => {
+      if (!this.conn) return;
+      try { this.conn.send(JSON.stringify({t: "__ping"})); } catch { /* dropping anyway */ }
+      if (Date.now() - this.lastRecv > 7000) this.dropConn();
+    }, 2000);
+    if (this.onPeerChange) this.onPeerChange();
+  }
+
+  private dropConn(): void {
+    if (!this.conn) return;
+    const c = this.conn;
+    this.conn = null;
+    if (this.hbTimer) { clearInterval(this.hbTimer); this.hbTimer = null; }
+    try { c.close(); } catch { /* already gone */ }
+    if (this.role === "guest") this.reset();
     if (this.onPeerChange) this.onPeerChange();
   }
 

@@ -1,6 +1,6 @@
 import type { GameState, Member, Dir } from "./types";
 import { MAPS, ABONUS, SAVE_KEY, ENC_GRACE } from "./data";
-import { migrateState } from "./cards";
+import { migrateState, cleanupLend } from "./cards";
 
 export let state: GameState = null as unknown as GameState;
 export function setState(s: GameState): void { state = s; }
@@ -27,8 +27,11 @@ export function save(): void {
 }
 export function loadSave(): GameState | null {
   try {
-    const s = localStorage.getItem(SAVE_KEY);
-    return s ? migrateState(JSON.parse(s)) : null;
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const s = migrateState(JSON.parse(raw));
+    cleanupLend(s); // a loan that survived a reload belongs to a dead session
+    return s;
   } catch { return null; }
 }
 

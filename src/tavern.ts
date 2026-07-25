@@ -8,39 +8,53 @@ import { TRAITS, SKILL_TREES, buySkill, spellsOf } from "./traits";
 import { SPELLS } from "./data";
 import { sfx } from "./audio";
 
-/* ============================== OPENING DRAFT ============================== */
-let draftCards: Member[] = [];
-let picked: string[] = [];
-
-export function openDraft(): void {
-  draftCards = rollDraft();
-  picked = [];
+/* ============================== CARD PICKER ============================== */
+/** Reusable pick-N-cards screen; used by the opening draft and co-op lending. */
+export function openPicker(
+  cards: Member[], count: number,
+  texts: {title: string; blurb: string; button: string},
+  cb: (chosen: Member[]) => void,
+): void {
+  const picked: string[] = [];
+  $("draft-title").textContent = texts.title;
+  $("draft-blurb").innerHTML = texts.blurb;
   const box = $("draft-roster");
-  box.innerHTML = draftCards.map(c => cardHTML(c)).join("");
+  box.innerHTML = cards.map(c => cardHTML(c)).join("");
+  const bt = $("bt-setout") as HTMLButtonElement;
+  const refresh = () => {
+    box.querySelectorAll<HTMLElement>(".rcard").forEach(e2 =>
+      e2.classList.toggle("sel", picked.includes(e2.dataset.card!)));
+    bt.disabled = picked.length !== count;
+    bt.textContent = `${texts.button} (${picked.length} / ${count})`;
+  };
   box.querySelectorAll<HTMLElement>(".rcard").forEach(el => {
     el.onclick = () => {
       const id = el.dataset.card!;
       const at = picked.indexOf(id);
       if (at >= 0) picked.splice(at, 1);
-      else if (picked.length < 4) picked.push(id);
-      box.querySelectorAll<HTMLElement>(".rcard").forEach(e2 =>
-        e2.classList.toggle("sel", picked.includes(e2.dataset.card!)));
-      const bt = $("bt-setout") as HTMLButtonElement;
-      bt.disabled = picked.length !== 4;
-      bt.textContent = `Set Out (${picked.length} / 4)`;
+      else if (picked.length < count) picked.push(id);
+      refresh();
     };
   });
-  const bt = $("bt-setout") as HTMLButtonElement;
-  bt.disabled = true; bt.textContent = "Set Out (0 / 4)";
-  bt.onclick = () => {
-    const party = picked.map(id => draftCards.find(c => c.id === id)!);
+  refresh();
+  bt.onclick = () => cb(picked.map(id => cards.find(c => c.id === id)!));
+  show("scr-draft");
+}
+
+/* ============================== OPENING DRAFT ============================== */
+export function openDraft(): void {
+  openPicker(rollDraft(), 4, {
+    title: "The Salted Gull",
+    blurb: `Lanternlight, spilled ale, and eight strangers who have nowhere left to go.
+      Choose <b style="color:var(--parch)">four</b> to descend with you — the rest sail on the morning tide.`,
+    button: "Set Out",
+  }, party => {
     setState(newState(party));
     refreshVisitors();
     save();
     sfx("recruit");
     app.openTown("You shoulder your packs. The Salted Gull's door swings shut behind you.");
-  };
-  show("scr-draft");
+  });
 }
 
 /* ============================== TAVERN ============================== */
@@ -143,17 +157,33 @@ export function openCard(id: string): void {
     <div class="traitbox">${traits}</div>
     <div class="skilltree">${treeHTML}</div>`;
 
-  $("card-body").querySelectorAll<HTMLButtonElement>(".skillnode.avail").forEach(b => {
-    b.onclick = () => {
-      const err = buySkill(m, b.dataset.node!);
-      if (err) { $("tav-msg").textContent = err; return; }
-      save(); sfx("levelup");
-      openCard(m.id);
-    };
-  });
+  const onLoan = !!state.coopGuestIds?.includes(m.id);
+  if (!onLoan) {
+    $("card-body").querySelectorAll<HTMLButtonElement>(".skillnode.avail").forEach(b => {
+      b.onclick = () => {
+        const err = buySkill(m, b.dataset.node!);
+        if (err) { $("tav-msg").textContent = err; return; }
+        save(); sfx("levelup");
+        openCard(m.id);
+      };
+    });
+  } else {
+    $("card-body").querySelectorAll<HTMLButtonElement>(".skillnode").forEach(b => { b.disabled = true; });
+  }
 
   const actions = $("card-actions");
   actions.innerHTML = "";
+  if (onLoan) {
+    const note = document.createElement("p");
+    note.className = "dim"; note.style.fontSize = ".82rem";
+    note.textContent = "On loan from your companion — their card, their choices.";
+    actions.appendChild(note);
+    const close0 = document.createElement("button");
+    close0.textContent = "Close"; close0.className = "primary";
+    close0.onclick = () => { $("card-overlay").hidden = true; };
+    actions.appendChild(close0);
+    return;
+  }
   const swap = document.createElement("button");
   if (inParty) {
     swap.textContent = "Send to the Benches";

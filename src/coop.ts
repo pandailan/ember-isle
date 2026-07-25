@@ -1,21 +1,28 @@
-import type { GameState, EnemyInst } from "./types";
-import { state, setState, setSaveEnabled } from "./state";
+import type { GameState, EnemyInst, Member } from "./types";
+import { state, setState, setSaveEnabled, save, loadSave } from "./state";
+import { SAVE_KEY } from "./data";
+import { sanitizeCard, cleanupLend } from "./cards";
 import { app } from "./bus";
 import { net } from "./net";
 import { show, currentScreen, renderPlaques, renderFoesData, redrawCombatLog } from "./ui";
 import { $ } from "./util";
 import { renderView } from "./render";
 import { getLogLines, setLogLines, dlog } from "./dungeon";
+import { openPicker } from "./tavern";
 import { sfx } from "./audio";
 
 /* ============================== REMOTE COMBAT SEATS ============================== */
-/* The last two party slots are commanded by the linked companion. */
+/* With a loan active, the companion commands their own cards; otherwise
+   (companion-mode fallback) they command the host's rear two seats. */
 interface WireBtn { t: string; dis: boolean; wide: boolean; }
 let remoteResolve: ((i: number) => void) | null = null;
 let remotePending: {title: string; btns: WireBtn[]} | null = null;
+let guestReady = false; // the guest has finished its lend/companion decision
 
 export function isRemoteSeat(idx: number): boolean {
-  return net.role === "host" && net.connected && idx >= 2;
+  if (net.role !== "host" || !net.connected || !guestReady) return false;
+  if (state.coopGuestIds?.length) return state.coopGuestIds.includes(state.party[idx]?.id);
+  return idx >= 2;
 }
 
 export function askRemote(title: string, btns: WireBtn[]): Promise<number> {
@@ -30,9 +37,116 @@ export function clearRemoteMenu(): void {
   if (net.role === "host" && net.connected) net.send({t: "menuclear"});
 }
 
+/* ============================== CARD LENDING (host side) ============================== */
+let pendingLend: Member[] | null = null;
+let pendingUnlend = false;
+
+function inCombat(): boolean { return currentScreen === "scr-combat"; }
+
+function applyLend(cards: Member[]): void {
+  if (state.coopGuestIds?.length) return; // one loan at a time
+  const displaced = state.party.splice(2, 2);
+  state.collection.push(...displaced);
+  state.coopDisplacedIds = displaced.map(c => c.id);
+  state.party.push(...cards);
+  state.coopGuestIds = cards.map(c => c.id);
+  state.guestGoldOwed = 0;
+  save(); sfx("recruit");
+  const names = cards.map(c => c.name).join(" and ");
+  if (currentScreen === "scr-dungeon") {
+    dlog(`${names} step out of the signal fire's light and fall in beside you.`);
+    renderPlaques("dg-plaques");
+  } else if (currentScreen === "scr-town") {
+    app.openTown(`${names} step out of the signal fire's light. ${displaced.map(c => c.name).join(" and ") || "No one"} head${displaced.length === 1 ? "s" : ""} to the tavern benches.`);
+  }
+}
+
+function applyUnlend(reason: string): void {
+  if (!state.coopGuestIds?.length) return;
+  cleanupLend(state);
+  save();
+  if (currentScreen === "scr-dungeon") { dlog(reason); renderPlaques("dg-plaques"); }
+  else if (currentScreen === "scr-town") app.openTown(reason);
+}
+
+/* ============================== GUEST SIDE ============================== */
+let guestActive = false;
+let ownSave: GameState | null = null;   // the guest's real world, kept safe while mirroring
+let lentIds: string[] = [];
+let lastGoldOwed = 0;
+let lastMerge = "";
+
+function guestMergeProgress(hostState: GameState): void {
+  if (!ownSave || !lentIds.length) return;
+  const pool = [...hostState.party, ...hostState.collection];
+  let changed = false;
+  for (const id of lentIds) {
+    const updated = pool.find(c => c.id === id);
+    if (!updated) continue;
+    const clean: Member = {...updated, guard: false};
+    const put = (arr: Member[]) => {
+      const i = arr.findIndex(c => c.id === id);
+      if (i >= 0) { arr[i] = clean; return true; }
+      return false;
+    };
+    if (put(ownSave.party) || put(ownSave.collection)) changed = true;
+  }
+  const owed = hostState.guestGoldOwed ?? 0;
+  if (owed > lastGoldOwed) { ownSave.gold += owed - lastGoldOwed; lastGoldOwed = owed; changed = true; }
+  if (!changed) return;
+  const j = JSON.stringify(ownSave);
+  if (j === lastMerge) return;
+  lastMerge = j;
+  try { localStorage.setItem(SAVE_KEY, j); } catch { /* private mode */ }
+}
+
+function offerLend(): void {
+  ownSave = loadSave();
+  const lendable = ownSave ? [...ownSave.party, ...ownSave.collection].filter(c => !c.down) : [];
+  if (!ownSave || lendable.length < 2) {
+    // companion mode: no cards of their own yet
+    enterMirror("Linked! You fight with your host's crew tonight — play your own expedition sometime and you can bring your own cards.");
+    return;
+  }
+  openPicker(lendable, 2, {
+    title: "The Signal Fire",
+    blurb: `The flames will carry <b style="color:var(--parch)">two</b> of your cards into your
+      friend's world. They fight there, and bring home the experience — and half the gold.`,
+    button: "Send Through the Fire",
+  }, chosen => {
+    lentIds = chosen.map(c => c.id);
+    lastGoldOwed = 0;
+    net.send({t: "lend", cards: chosen as unknown as Record<string, unknown>[]});
+    sfx("spell");
+    enterMirror("Your cards step into the flame. Waiting for your host's world…");
+  });
+}
+
+let bufferedMenu: {title: string; btns: WireBtn[]} | null = null;
+function enterMirror(msg: string): void {
+  guestActive = true;
+  setSaveEnabled(false); // never let the host's mirrored world overwrite our own save
+  if (net.role === "guest" && !lentIds.length) net.send({t: "companion"});
+  show("scr-town");
+  $("town-menu").innerHTML = `<p class="dim">${msg}</p>`;
+  $("town-msg").textContent = "";
+  $("join-status").textContent = "";
+  if (bufferedMenu) { const b = bufferedMenu; bufferedMenu = null; renderGuestMenu(b.title, b.btns); }
+}
+
+function renderGuestMenu(title: string, btns: WireBtn[]): void {
+  $("cmd-title").textContent = title || "";
+  const box = $("cmd-btns"); box.innerHTML = "";
+  btns.forEach((b, i) => {
+    const el = document.createElement("button");
+    el.textContent = b.t; if (b.wide) el.className = "wide"; el.disabled = b.dis;
+    el.onclick = () => { sfx("tap"); net.send({t: "choice", i}); box.innerHTML = ""; $("cmd-title").textContent = "…"; };
+    box.appendChild(el);
+  });
+}
+
 /* ============================== HOST → GUEST SYNC ============================== */
 let lastSync = "";
-let guestActive = false;
 
 interface SyncMsg {
   t: "sync"; screen: string; state: GameState; logLines: string[];
@@ -51,6 +165,7 @@ function snapshot(): SyncMsg {
 
 function applySync(m: SyncMsg): void {
   if (!m.state) return;
+  guestMergeProgress(m.state);
   setState(m.state);
   const scr = m.screen;
   if (scr === "scr-dungeon") {
@@ -76,7 +191,13 @@ function applySync(m: SyncMsg): void {
 
 export function initCoop(): void {
   setInterval(() => {
-    if (net.role !== "host" || !net.connected || !state) return;
+    if (net.role !== "host" || !state) return;
+    // deferred loan changes wait for combat to end
+    if (!inCombat()) {
+      if (pendingUnlend) { pendingUnlend = false; applyUnlend("Your companion's cards fade back into the fire."); }
+      if (pendingLend && net.connected) { const c = pendingLend; pendingLend = null; applyLend(c); }
+    }
+    if (!net.connected) return;
     const snap = snapshot();
     const j = JSON.stringify(snap);
     if (j !== lastSync) { lastSync = j; net.send(snap as unknown as Record<string, unknown> & {t: string}); }
@@ -90,13 +211,18 @@ export function initCoop(): void {
         else if (currentScreen === "scr-town") app.openTown("A companion has answered the signal fire.");
         if (remotePending) net.send({t: "menu", title: remotePending.title, btns: remotePending.btns});
       } else {
-        if (remoteResolve) remoteResolve(-1); // take back control of their members
-        if (currentScreen === "scr-dungeon") dlog("Your companion's torch gutters out — you walk alone again.");
+        if (remoteResolve) remoteResolve(-1); // take back control of their seats
+        pendingLend = null; guestReady = false;
+        if (inCombat()) pendingUnlend = true;
+        else applyUnlend("The link breaks — your companion's cards fade back into the fire.");
+        if (currentScreen === "scr-dungeon" && !state.coopGuestIds?.length)
+          dlog("Your companion's torch gutters out — you walk alone again.");
       }
     } else if (guestActive && !net.connected) {
       guestActive = false; setSaveEnabled(true);
+      ownSave = null; lentIds = []; lastGoldOwed = 0; lastMerge = "";
       show("scr-title");
-      $("join-status").textContent = "The link was severed.";
+      $("join-status").textContent = "The link was severed. Your cards remember what they learned.";
     }
   };
 
@@ -109,21 +235,26 @@ export function initCoop(): void {
         else if (a === "potion") app.usePotionField();
       } else if (m.t === "choice" && remoteResolve) {
         remoteResolve(typeof m.i === "number" ? m.i : -1);
+      } else if (m.t === "lend") {
+        const cards = (Array.isArray(m.cards) ? m.cards : [])
+          .map(sanitizeCard).filter((c): c is Member => !!c).slice(0, 2);
+        if (cards.length !== 2 || state.coopGuestIds?.length) return;
+        guestReady = true;
+        if (inCombat()) pendingLend = cards;
+        else applyLend(cards);
+      } else if (m.t === "companion") {
+        guestReady = true;
       }
     } else if (net.role === "guest") {
-      if (m.t === "sync") applySync(m as unknown as SyncMsg);
+      // until the lend/companion decision is made, the picker owns the screen
+      if (m.t === "sync") { if (guestActive) applySync(m as unknown as SyncMsg); }
       else if (m.t === "menu") {
-        const btns = (m.btns as WireBtn[]) || [];
-        $("cmd-title").textContent = (m.title as string) || "";
-        const box = $("cmd-btns"); box.innerHTML = "";
-        btns.forEach((b, i) => {
-          const el = document.createElement("button");
-          el.textContent = b.t; if (b.wide) el.className = "wide"; el.disabled = b.dis;
-          el.onclick = () => { sfx("tap"); net.send({t: "choice", i}); box.innerHTML = ""; $("cmd-title").textContent = "…"; };
-          box.appendChild(el);
-        });
+        const menu = {title: (m.title as string) || "", btns: (m.btns as WireBtn[]) || []};
+        if (guestActive) renderGuestMenu(menu.title, menu.btns);
+        else bufferedMenu = menu;
       } else if (m.t === "menuclear") {
-        $("cmd-btns").innerHTML = ""; $("cmd-title").textContent = "…";
+        bufferedMenu = null;
+        if (guestActive) { $("cmd-btns").innerHTML = ""; $("cmd-title").textContent = "…"; }
       }
     }
   };
@@ -135,12 +266,7 @@ export function initCoop(): void {
     $("join-status").textContent = "Following the signal…";
     net.join(code, err => {
       if (err) { $("join-status").textContent = "No fire answers that code. Check it and try again."; return; }
-      guestActive = true;
-      setSaveEnabled(false);
-      $("join-status").textContent = "";
-      show("scr-town");
-      $("town-menu").innerHTML = `<p class="dim">Linked! Waiting for your host's world…</p>`;
-      $("town-msg").textContent = "";
+      offerLend();
     });
   };
 }

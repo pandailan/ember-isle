@@ -14,11 +14,14 @@
   and traits, collection + benching, daily tavern visitors to recruit, per-class
   skill trees (2 branches × 3 tiers), skill points on even levels.
 - **Procedural audio** — WebAudio sfx and ambient scene music, no asset files.
+- **Phase 2 — bring-your-own-cards co-op**: a joining guest sends two cards from
+  their own collection through the Signal Fire (2+2 parties); battle gold is
+  split and the guest's save continuously receives their cards' XP, levels, and
+  gold share. Wire-sanitized cards, heartbeat disconnect detection, and loan
+  cleanup on reload. Guests without cards fall back to companion mode.
 
 ## Next
 
-- **Phase 2 — bring-your-own-cards co-op**: each linked player fields two cards
-  from their *own* collection (2+2 parties); XP and loot split.
 - **Phase 3 — the Trading Post**: propose/confirm card and item swaps over the
   P2P link while both players are online. Trust-based (saves are local).
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
