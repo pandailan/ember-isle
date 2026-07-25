@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+</head>
+<body>
+<!-- EI:content-start -->
+<title>Ember Isle — a dungeon crawl</title>
+<style>
+  :root{
+    --ink:#0d0a07; --stone:#1d1712; --panel:#15100a; --deep:#0a0705;
+    --parch:#e8d9b0; --parch-dim:#a3916c; --line:#3a2d1c; --line-soft:#2a2114;
+    --amber:#e09a3c; --ember:#c8502f; --arc:#7fa8bd; --good:#8fae6a;
+    --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--ink); color:var(--parch);
+    font-family:var(--serif); font-size:16px; line-height:1.45;}
+  body{min-height:100dvh; touch-action:manipulation;}
+  #app{max-width:600px; margin:0 auto; min-height:100dvh; display:flex; flex-direction:column;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
+  .screen{display:none; flex:1; flex-direction:column; padding:14px; gap:12px; overflow-y:auto;}
+  .screen.on{display:flex;}
+  .sc{font-variant:small-caps; letter-spacing:.14em;}
+  h1,h2,h3{margin:0; font-weight:600; text-wrap:balance;}
+  h1{font-size:2.4rem; text-align:center; color:var(--amber); font-variant:small-caps; letter-spacing:.18em; text-shadow:0 0 24px rgba(224,154,60,.25);}
+  h2{font-size:1.35rem; color:var(--amber); font-variant:small-caps; letter-spacing:.12em;}
+  h3{font-size:1.05rem; color:var(--parch); font-variant:small-caps; letter-spacing:.1em;}
+  p{margin:0;}
+  .dim{color:var(--parch-dim);}
+  .narr{max-width:34em; margin:0 auto; text-align:center;}
+  .rule{border:none; border-top:1px solid var(--line); margin:2px 0; width:100%;}
+  .flame{text-align:center; font-size:1.5rem; color:var(--ember); letter-spacing:.4em; user-select:none;}
+
+  button{font-family:var(--serif); font-size:1rem; color:var(--parch);
+    background:linear-gradient(180deg,#241b10,#180f08); border:1px solid var(--line);
+    border-radius:6px; padding:12px 16px; min-height:48px; cursor:pointer;
+    font-variant:small-caps; letter-spacing:.08em;}
+  button:active{background:#2e2110; border-color:var(--amber); color:var(--amber);}
+  button:disabled{opacity:.38; pointer-events:none;}
+  button.primary{border-color:var(--amber); color:var(--amber);}
+  button.danger{border-color:#6b3020; color:#d98a6a;}
+  .btnrow{display:flex; gap:10px; flex-wrap:wrap; justify-content:center;}
+  .btncol{display:flex; flex-direction:column; gap:10px;}
+  .menu button{text-align:left; display:flex; justify-content:space-between; gap:10px; align-items:baseline;}
+  .menu button .hint{color:var(--parch-dim); font-variant:normal; letter-spacing:0; font-size:.85rem; text-align:right;}
+
+  .goldbar{display:flex; justify-content:space-between; align-items:baseline; font-family:var(--mono);
+    font-size:.85rem; color:var(--parch-dim); border:1px solid var(--line-soft); border-radius:6px;
+    padding:8px 12px; background:var(--panel);}
+  .goldbar b{color:var(--amber); font-weight:600;}
+
+  /* roster */
+  .roster{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .rcard{border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--panel);
+    cursor:pointer; display:flex; flex-direction:column; gap:4px;}
+  .rcard .rname{font-variant:small-caps; letter-spacing:.08em; font-size:1.02rem;}
+  .rcard .rcls{color:var(--amber); font-size:.8rem; font-variant:small-caps; letter-spacing:.12em;}
+  .rcard .rblurb{color:var(--parch-dim); font-size:.8rem; line-height:1.35;}
+  .rcard .rstats{font-family:var(--mono); font-size:.72rem; color:var(--parch-dim); font-variant-numeric:tabular-nums;}
+  .rcard.sel{border-color:var(--amber); background:#221708; box-shadow:0 0 0 1px var(--amber) inset;}
+  .rcard.sel .rname::after{content:" ✦"; color:var(--amber);}
+
+  /* dungeon */
+  #scr-dungeon{padding:10px 14px; gap:8px;}
+  .viewwrap{position:relative; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#000;
+    box-shadow:0 0 60px rgba(200,80,47,.07) inset;}
+  #view{display:block; width:100%; height:auto;}
+  #automap{position:absolute; top:8px; right:8px; background:rgba(10,7,5,.88); border:1px solid var(--line);
+    border-radius:6px; display:none;}
+  #automap.on{display:block;}
+  .compass{display:flex; justify-content:space-between; font-family:var(--mono); font-size:.78rem;
+    color:var(--parch-dim); padding:0 2px;}
+  .compass b{color:var(--amber); font-weight:600;}
+  #log{min-height:3.6em; border:1px solid var(--line-soft); border-radius:6px; background:var(--panel);
+    padding:7px 11px; font-size:.88rem; line-height:1.4; color:var(--parch);}
+  #log .old{color:var(--parch-dim);}
+
+  .plaques{display:grid; grid-template-columns:repeat(4,1fr); gap:7px;}
+  .plaque{border:1px solid var(--line); border-radius:6px; padding:6px 8px; background:var(--panel);
+    display:flex; flex-direction:column; gap:3px;}
+  .plaque .pname{font-size:.78rem; font-variant:small-caps; letter-spacing:.06em; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;}
+  .plaque .pnum{font-family:var(--mono); font-size:.68rem; color:var(--parch-dim); font-variant-numeric:tabular-nums;}
+  .bar{height:5px; border-radius:3px; background:#241a12; overflow:hidden;}
+  .bar i{display:block; height:100%; border-radius:3px; transition:width .3s;}
+  .bar.hp i{background:linear-gradient(90deg,#8f3520,var(--ember));}
+  .bar.mp i{background:linear-gradient(90deg,#3d5a6b,var(--arc));}
+  .plaque.down{opacity:.45;} .plaque.down .pname{color:var(--ember);}
+  .plaque.tgt{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber) inset; cursor:pointer;}
+
+  .dpad{display:grid; grid-template-columns:repeat(5,1fr); gap:8px;}
+  .dpad button{font-size:1.25rem; min-height:54px; padding:6px;}
+  .dpad .small{font-size:.8rem;}
+
+  /* combat */
+  .foes{display:flex; gap:8px; flex-wrap:wrap; justify-content:center;}
+  .foe{border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:8px 10px;
+    width:118px; display:flex; flex-direction:column; gap:5px; align-items:center;}
+  .foe .portrait{width:60px; height:60px; border-radius:50%; border:2px solid var(--sig,#7a5a3a);
+    background:radial-gradient(circle at 50% 32%, #2a1d10, #0e0906);}
+  .foe .fname{font-size:.76rem; text-align:center; font-variant:small-caps; letter-spacing:.05em; line-height:1.2;}
+  .foe.dead{opacity:.25; filter:grayscale(1);}
+  .foe.boss{width:160px;} .foe.boss .portrait{width:88px; height:88px;}
+  #combat-log{min-height:4.2em;}
+  #cmdbar{display:flex; flex-direction:column; gap:8px;}
+  #cmd-title{font-size:.85rem; color:var(--amber); font-variant:small-caps; letter-spacing:.12em; text-align:center;}
+  #cmd-btns{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  #cmd-btns button{min-height:50px;}
+  #cmd-btns button.wide{grid-column:1/-1;}
+
+  .shoplist{display:flex; flex-direction:column; gap:8px;}
+  .shoprow{display:flex; justify-content:space-between; align-items:center; gap:10px;
+    border:1px solid var(--line-soft); border-radius:6px; padding:8px 10px; background:var(--panel);}
+  .shoprow .sinfo{display:flex; flex-direction:column; gap:2px; font-size:.88rem;}
+  .shoprow .sinfo .dim{font-size:.76rem;}
+  .shoprow button{min-height:42px; padding:8px 14px; white-space:nowrap;}
+
+  .endstats{font-family:var(--mono); font-size:.85rem; color:var(--parch-dim); text-align:center;
+    font-variant-numeric:tabular-nums; line-height:1.8;}
+  @keyframes stepbob{0%{transform:translateY(0)}45%{transform:translateY(3px) scale(1.005)}100%{transform:translateY(0)}}
+  .viewwrap.step #view{animation:stepbob .16s ease-out;}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
+</style>
+
+<div id="app">
+
+  <!-- TITLE -->
+  <div class="screen on" id="scr-title" style="justify-content:center; text-align:center; gap:20px;">
+    <div class="flame">✦ ✧ ✦</div>
+    <h1>Ember Isle</h1>
+    <p class="dim sc" style="text-align:center; letter-spacing:.2em;">a first-person dungeon crawl</p>
+    <hr class="rule" style="max-width:200px; margin:8px auto;">
+    <p class="narr">The fishing isle of Vhalis has gone dark. Beneath the Old Stair the Ember burns,
+      and no captain will sail while it does. In the tavern by the harbor, the last free blades of
+      the island wait for someone to lead them down.</p>
+    <div class="btnrow" style="margin-top:10px;">
+      <button class="primary" id="bt-new">New Expedition</button>
+      <button id="bt-continue" style="display:none;">Continue</button>
+    </div>
+    <p class="dim" style="font-size:.78rem; text-align:center;">Runs entirely in your browser · progress is saved on this device</p>
+  </div>
+
+  <!-- TAVERN / PARTY SELECT -->
+  <div class="screen" id="scr-tavern">
+    <h2>The Salted Gull</h2>
+    <p class="dim" style="font-size:.9rem;">Lanternlight, spilled ale, and eight sellswords who have
+      nowhere left to go. Choose <b style="color:var(--parch)">four</b> to descend with you.</p>
+    <div class="roster" id="roster"></div>
+    <button class="primary" id="bt-setout" disabled>Set Out (0 / 4)</button>
+  </div>
+
+  <!-- TOWN -->
+  <div class="screen" id="scr-town">
+    <h2 id="town-title">Vhalis Harbor</h2>
+    <p class="dim" id="town-flavor" style="font-size:.9rem;">Gulls wheel over empty moorings. The whole
+      town smells of woodsmoke and waiting.</p>
+    <div class="goldbar"><span>Gold <b id="town-gold">0</b></span><span>Potions <b id="town-potions">0</b></span></div>
+    <div class="btncol menu" id="town-menu"></div>
+    <div class="plaques" id="town-plaques"></div>
+    <p class="dim" id="town-msg" style="font-size:.85rem; min-height:1.3em;"></p>
+  </div>
+
+  <!-- SHOP -->
+  <div class="screen" id="scr-shop">
+    <h2>Ember &amp; Anchor Provisions</h2>
+    <p class="dim" style="font-size:.9rem;">“Steel for the stair, salve for the climb back. Coin first, sympathy after.”</p>
+    <div class="goldbar"><span>Gold <b id="shop-gold">0</b></span><span>Potions <b id="shop-potions">0</b></span></div>
+    <div class="shoplist" id="shop-list"></div>
+    <button id="bt-shop-back">Back to the Harbor</button>
+  </div>
+
+  <!-- TEMPLE -->
+  <div class="screen" id="scr-temple">
+    <h2>Temple of the Tide</h2>
+    <p class="dim" style="font-size:.9rem;">Salt-candles burn blue before the altar. The priestess does not
+      ask how they fell — only whether you can pay the tide’s price.</p>
+    <div class="goldbar"><span>Gold <b id="temple-gold">0</b></span><span></span></div>
+    <div class="btncol menu" id="temple-list"></div>
+    <p class="dim" id="temple-msg" style="font-size:.85rem; min-height:1.3em;"></p>
+    <button id="bt-temple-back">Back to the Harbor</button>
+  </div>
+
+  <!-- DUNGEON -->
+  <div class="screen" id="scr-dungeon">
+    <div class="viewwrap">
+      <canvas id="view" width="480" height="360"></canvas>
+      <canvas id="automap" width="120" height="120"></canvas>
+    </div>
+    <div class="compass"><span id="pos-label"></span><span>Facing <b id="dir-label">N</b></span></div>
+    <div id="log"></div>
+    <div class="plaques" id="dg-plaques"></div>
+    <div class="dpad">
+      <button class="small" id="bt-map">Map</button>
+      <button id="bt-left" aria-label="Turn left">⟲</button>
+      <button id="bt-fwd" aria-label="Step forward">▲</button>
+      <button id="bt-right" aria-label="Turn right">⟳</button>
+      <button class="small" id="bt-potion">Potion</button>
+      <button class="small" id="bt-save">Save</button>
+      <span></span>
+      <button id="bt-back" aria-label="Step back">▼</button>
+      <span></span>
+      <span></span>
+    </div>
+  </div>
+
+  <!-- COMBAT -->
+  <div class="screen" id="scr-combat">
+    <h3 id="combat-title" style="text-align:center;">Ambush!</h3>
+    <div class="foes" id="foes"></div>
+    <div id="combat-log" class="" style="border:1px solid var(--line-soft); border-radius:6px; background:var(--panel); padding:7px 11px; font-size:.88rem; min-height:4.2em;"></div>
+    <div class="plaques" id="cb-plaques"></div>
+    <div id="cmdbar">
+      <div id="cmd-title"></div>
+      <div id="cmd-btns"></div>
+    </div>
+  </div>
+
+  <!-- DEFEAT -->
+  <div class="screen" id="scr-dead" style="justify-content:center; text-align:center; gap:18px;">
+    <div class="flame" style="color:#5a2a1a;">✦ ✧ ✦</div>
+    <h2 style="text-align:center; color:var(--ember);">The Torches Go Out</h2>
+    <p class="narr dim">Your party has fallen in the dark beneath Vhalis. The Ember burns on,
+      and the sea keeps its silence.</p>
+    <div class="btnrow">
+      <button id="bt-dead-load" class="primary">Return to Last Save</button>
+      <button id="bt-dead-title">Back to Title</button>
+    </div>
+  </div>
+
+  <!-- VICTORY -->
+  <div class="screen" id="scr-end" style="justify-content:center; text-align:center; gap:18px;">
+    <div class="flame">✦ ✦ ✦</div>
+    <h2 style="text-align:center;">The Ember Is Quenched</h2>
+    <p class="narr">With Pyrelord Vhal broken and the Heart of Ember cold in your pack, the fog lifts
+      from the moorings. At dawn, for the first time in a year, a sail rises over Vhalis Harbor —
+      yours.</p>
+    <div class="endstats" id="end-stats"></div>
+    <div class="btnrow">
+      <button id="bt-end-continue">Keep Exploring the Isle</button>
+      <button id="bt-end-title">Back to Title</button>
+    </div>
+  </div>
+
+</div>
+
+<!--BUNDLE-->
+<!-- EI:content-end -->
+</body>
+</html>
