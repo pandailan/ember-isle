@@ -6,6 +6,7 @@ export interface AppBus {
   openTown(msg?: string): void;
   openTavern(msg?: string): void;
   openDraft(): void;
+  openTrade(): void;
   enterDungeon(fresh: boolean): void;
   startCombat(groupKeys: string[], isBoss: boolean): void;
   backToDungeon(msg: string | null): void;

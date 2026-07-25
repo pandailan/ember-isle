@@ -19,11 +19,14 @@
   split and the guest's save continuously receives their cards' XP, levels, and
   gold share. Wire-sanitized cards, heartbeat disconnect detection, and loan
   cleanup on reload. Guests without cards fall back to companion mode.
+- **Phase 3 — the Trading Post**: while linked, both players can visit the
+  post, see each other's tradeable cards, and swap one-for-one with an optional
+  gold sweetener. Three-step offer→accept→commit handshake (no rollbacks),
+  wire-sanitized cards, decline/cancel paths, combat pre-empts bartering.
+  Trust-based, as saves are local — the Phase 4 ledger hardens ownership.
 
 ## Next
 
-- **Phase 3 — the Trading Post**: propose/confirm card and item swaps over the
-  P2P link while both players are online. Trust-based (saves are local).
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
   as the source of truth for card ownership, plus shared leaderboard and a
   graveyard (fallen parties appear in other players' dungeons).

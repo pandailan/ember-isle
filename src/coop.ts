@@ -10,6 +10,10 @@ import { renderView } from "./render";
 import { getLogLines, setLogLines, dlog } from "./dungeon";
 import { openPicker } from "./tavern";
 import { sfx } from "./audio";
+import {
+  initTrade, onTradeMessage, tradeLinkLost, forceLeaveForCombat, isAtTradePost,
+  openTradePost, type TradeWorld,
+} from "./trade";
 
 /* ============================== REMOTE COMBAT SEATS ============================== */
 /* With a loan active, the companion commands their own cards; otherwise
@@ -122,13 +126,28 @@ function offerLend(): void {
   });
 }
 
+function persistOwnSave(): void {
+  if (!ownSave) return;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(ownSave)); } catch { /* private mode */ }
+}
+
+/** The guest's parked-world town view, with a door to the Trading Post. */
+function mirrorTownMenu(msg: string): void {
+  $("town-menu").innerHTML = `<p class="dim">${msg}</p>`;
+  const bt = document.createElement("button");
+  bt.id = "bt-guest-trade";
+  bt.innerHTML = `<span>The Trading Post</span><span class="hint">barter cards with your host</span>`;
+  bt.onclick = () => openTradePost();
+  $("town-menu").appendChild(bt);
+}
+
 let bufferedMenu: {title: string; btns: WireBtn[]} | null = null;
 function enterMirror(msg: string): void {
   guestActive = true;
   setSaveEnabled(false); // never let the host's mirrored world overwrite our own save
   if (net.role === "guest" && !lentIds.length) net.send({t: "companion"});
   show("scr-town");
-  $("town-menu").innerHTML = `<p class="dim">${msg}</p>`;
+  mirrorTownMenu(msg);
   $("town-msg").textContent = "";
   $("join-status").textContent = "";
   if (bufferedMenu) { const b = bufferedMenu; bufferedMenu = null; renderGuestMenu(b.title, b.btns); }
@@ -168,6 +187,11 @@ function applySync(m: SyncMsg): void {
   guestMergeProgress(m.state);
   setState(m.state);
   const scr = m.screen;
+  if (isAtTradePost()) {
+    // the post holds the screen — only a battle drags the guest away
+    if (scr === "scr-combat" && m.combat) forceLeaveForCombat();
+    else return;
+  }
   if (scr === "scr-dungeon") {
     if (currentScreen !== "scr-dungeon") show("scr-dungeon");
     renderPlaques("dg-plaques"); setLogLines(m.logLines || []); renderView();
@@ -184,12 +208,58 @@ function applySync(m: SyncMsg): void {
     $("town-gold").textContent = String(state.gold);
     $("town-potions").textContent = String(state.potions);
     renderPlaques("town-plaques");
-    $("town-menu").innerHTML = `<p class="dim">Your host walks the town — rest while the party provisions. You'll be swept along when they take the Old Stair.</p>`;
+    mirrorTownMenu("Your host walks the town — rest while the party provisions. You'll be swept along when they take the Old Stair.");
     $("town-msg").textContent = "";
   }
 }
 
+/* ============================== TRADE WORLD ADAPTERS ============================== */
+const hostWorld: TradeWorld = {
+  gold: () => state.gold,
+  addGold: n => { state.gold += n; },
+  tradeables: () => {
+    const excluded = new Set([...(state.coopGuestIds ?? []), ...(state.coopDisplacedIds ?? [])]);
+    return [...state.party, ...state.collection].filter(c => !excluded.has(c.id));
+  },
+  removeCard: id => {
+    let i = state.party.findIndex(c => c.id === id);
+    if (i >= 0) return state.party.splice(i, 1)[0];
+    i = state.collection.findIndex(c => c.id === id);
+    return i >= 0 ? state.collection.splice(i, 1)[0] : null;
+  },
+  addCard: c => { state.collection.push(c); },
+  commit: () => save(),
+  notify: msg => {
+    if (currentScreen === "scr-dungeon") dlog(msg);
+    else if (currentScreen === "scr-town") $("town-msg").textContent = msg;
+  },
+  leave: () => app.openTown(),
+};
+
+const guestWorld: TradeWorld = {
+  gold: () => ownSave?.gold ?? 0,
+  addGold: n => { if (ownSave) ownSave.gold += n; },
+  tradeables: () => ownSave
+    ? [...ownSave.party, ...ownSave.collection].filter(c => !lentIds.includes(c.id))
+    : [],
+  removeCard: id => {
+    if (!ownSave) return null;
+    let i = ownSave.party.findIndex(c => c.id === id);
+    if (i >= 0) return ownSave.party.splice(i, 1)[0];
+    i = ownSave.collection.findIndex(c => c.id === id);
+    return i >= 0 ? ownSave.collection.splice(i, 1)[0] : null;
+  },
+  addCard: c => { ownSave?.collection.push(c); },
+  commit: () => persistOwnSave(),
+  notify: msg => { if (currentScreen === "scr-town") $("town-msg").textContent = msg; },
+  leave: () => {
+    if (guestActive) enterMirror("Back from the post. Your host plays on.");
+    else show("scr-title");
+  },
+};
+
 export function initCoop(): void {
+  initTrade(() => net.role === "guest" ? guestWorld : hostWorld);
   setInterval(() => {
     if (net.role !== "host" || !state) return;
     // deferred loan changes wait for combat to end
@@ -213,12 +283,14 @@ export function initCoop(): void {
       } else {
         if (remoteResolve) remoteResolve(-1); // take back control of their seats
         pendingLend = null; guestReady = false;
+        tradeLinkLost();
         if (inCombat()) pendingUnlend = true;
         else applyUnlend("The link breaks — your companion's cards fade back into the fire.");
         if (currentScreen === "scr-dungeon" && !state.coopGuestIds?.length)
           dlog("Your companion's torch gutters out — you walk alone again.");
       }
     } else if (guestActive && !net.connected) {
+      tradeLinkLost();
       guestActive = false; setSaveEnabled(true);
       ownSave = null; lentIds = []; lastGoldOwed = 0; lastMerge = "";
       show("scr-title");
@@ -227,6 +299,7 @@ export function initCoop(): void {
   };
 
   net.onMessage = m => {
+    if (onTradeMessage(m)) return;
     if (net.role === "host") {
       if (m.t === "input" && currentScreen === "scr-dungeon") {
         const a = m.a as string;
@@ -250,6 +323,7 @@ export function initCoop(): void {
       if (m.t === "sync") { if (guestActive) applySync(m as unknown as SyncMsg); }
       else if (m.t === "menu") {
         const menu = {title: (m.title as string) || "", btns: (m.btns as WireBtn[]) || []};
+        if (isAtTradePost()) forceLeaveForCombat(); // battle outranks bartering
         if (guestActive) renderGuestMenu(menu.title, menu.btns);
         else bufferedMenu = menu;
       } else if (m.t === "menuclear") {

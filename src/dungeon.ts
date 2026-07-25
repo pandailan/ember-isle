@@ -26,6 +26,10 @@ export function dlog(msg: string): void {
 }
 
 export function enterDungeon(fresh: boolean): void {
+  if (fresh && state.party.length < 4) {
+    app.openTavern("The harbormaster bars the Stair: four must march. Fill the marching four first.");
+    return;
+  }
   state.inDungeon = true;
   setScene("dungeon");
   if (fresh) {

@@ -24,6 +24,7 @@ export function openTown(msg?: string): void {
       net.role === "host" ? (net.connected ? "companion linked" : `code ${net.code} — waiting`) : "invite a friend (co-op)",
       townSignal],
   ];
+  if (net.connected) opts.push(["The Trading Post", "barter cards with your companion", () => app.openTrade()]);
   for (const [t, h, fn] of opts) {
     const b = document.createElement("button");
     b.innerHTML = `<span>${t}</span><span class="hint">${h}</span>`;

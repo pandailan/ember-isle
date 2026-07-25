@@ -97,6 +97,10 @@
 
   #bt-audio{position:fixed; right:10px; bottom:10px; z-index:50; min-height:36px; padding:6px 12px;
     font-size:.78rem; opacity:.65; border-radius:16px;}
+
+  .tradeoffer{border:1px solid var(--amber); border-radius:8px; padding:12px; background:#20160a;
+    display:flex; flex-direction:column; gap:10px;}
+  .tradeoffer h3{color:var(--amber);}
   .rcard .rblurb{color:var(--parch-dim); font-size:.8rem; line-height:1.35;}
   .rcard .rstats{font-family:var(--mono); font-size:.72rem; color:var(--parch-dim); font-variant-numeric:tabular-nums;}
   .rcard.sel{border-color:var(--amber); background:#221708; box-shadow:0 0 0 1px var(--amber) inset;}
@@ -209,6 +213,22 @@
       <button id="bt-tav-back" class="primary">Back to the Harbor</button>
     </div>
     <p class="dim" id="tav-msg" style="font-size:.85rem; min-height:1.3em;"></p>
+  </div>
+
+  <!-- TRADING POST -->
+  <div class="screen" id="scr-trade">
+    <h2>The Trading Post</h2>
+    <p class="dim" id="trade-status" style="font-size:.85rem; min-height:1.3em;">Driftwood counter, one oil lamp, and a ledger nobody reads.</p>
+    <div id="trade-incoming"></div>
+    <h3>Their Cards</h3>
+    <div class="roster" id="trade-theirs"></div>
+    <h3>Your Cards <span class="dim" id="trade-gold-ui" style="font-size:.8rem; font-variant:normal; letter-spacing:0;"></span></h3>
+    <div class="roster" id="trade-mine"></div>
+    <div class="btnrow">
+      <button id="bt-trade-gold">Sweeten +10 g</button>
+      <button id="bt-trade-propose" class="primary" disabled>Propose Swap</button>
+      <button id="bt-trade-leave">Leave the Post</button>
+    </div>
   </div>
 
   <!-- CARD DETAIL OVERLAY -->

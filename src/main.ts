@@ -7,6 +7,7 @@ import { openDraft, openTavern, bindTavern } from "./tavern";
 import { enterDungeon, backToDungeon, turn, step, usePotionField, bindDungeonControls, rescueParty } from "./dungeon";
 import { startCombat, combatSnapshot } from "./combat";
 import { initCoop } from "./coop";
+import { openTradePost, bindTrade } from "./trade";
 import { unlock, toggleMute, isMuted, setScene } from "./audio";
 
 /* Wire the cross-screen bus (keeps the module graph acyclic). */
@@ -21,6 +22,7 @@ app.turn = turn;
 app.step = step;
 app.usePotionField = usePotionField;
 app.combatSnapshot = combatSnapshot;
+app.openTrade = openTradePost;
 
 /* ============================== TITLE ============================== */
 function initTitle(): void {
@@ -69,6 +71,7 @@ bindTavern();
 bindDungeonControls();
 bindEndScreens();
 bindAudio();
+bindTrade();
 initCoop();
 
 declare global { interface Window { __ei: unknown; } }
