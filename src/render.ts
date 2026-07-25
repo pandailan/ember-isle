@@ -20,6 +20,68 @@ const BYP = (p: number) => CY + HH[p];
 /* ---------- animation clock, sprite cache, ember particles ---------- */
 let animT = 0;
 
+/* ---------- procedural stone textures ---------- */
+/* Irregular block courses with per-stone shading, relief edges, cracks,
+   grain, and mossy variants. Deterministic, generated once. */
+let wallTexCache: HTMLCanvasElement[] | null = null;
+
+function makeWallTexture(seed: number, mossy: boolean): HTMLCanvasElement {
+  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128;
+  const c = cv.getContext("2d")!;
+  let pi = 0;
+  const pr = () => { const s = Math.sin(seed * 91.7 + (pi++) * 127.1) * 43758.5453; return s - Math.floor(s); };
+  c.fillStyle = "#3a2b1b"; c.fillRect(0, 0, 128, 128); // mortar ground
+  let y = 0;
+  while (y < 128) {
+    const rh = 17 + Math.floor(pr() * 15);
+    let x = -Math.floor(pr() * 22);
+    while (x < 128) {
+      const bw = 20 + Math.floor(pr() * 28);
+      const shade = 0.8 + pr() * 0.4;
+      c.fillStyle = `rgb(${Math.round(92 * shade)},${Math.round(69 * shade)},${Math.round(47 * shade)})`;
+      c.fillRect(x + 1.5, y + 1.5, bw - 3, rh - 3);
+      c.fillStyle = "rgba(232,217,176,.07)"; c.fillRect(x + 1.5, y + 1.5, bw - 3, 2);   // top relief
+      c.fillStyle = "rgba(0,0,0,.24)"; c.fillRect(x + 1.5, y + rh - 4.5, bw - 3, 3);   // under-shadow
+      if (pr() < 0.18) { // a chipped corner
+        c.fillStyle = "rgba(0,0,0,.2)";
+        c.beginPath(); c.moveTo(x + 1.5, y + 1.5); c.lineTo(x + 8, y + 1.5); c.lineTo(x + 1.5, y + 7); c.closePath(); c.fill();
+      }
+      x += bw;
+    }
+    y += rh;
+  }
+  for (let k = 0; k < 3; k++) { // cracks wandering down
+    c.strokeStyle = "rgba(0,0,0,.35)"; c.lineWidth = 1;
+    c.beginPath();
+    let cx0 = pr() * 128, cy0 = pr() * 60;
+    c.moveTo(cx0, cy0);
+    for (let s2 = 0; s2 < 4; s2++) { cx0 += (pr() - 0.5) * 26; cy0 += pr() * 20; c.lineTo(cx0, cy0); }
+    c.stroke();
+  }
+  for (let k = 0; k < 320; k++) { // grain
+    c.fillStyle = pr() < 0.5 ? "rgba(0,0,0,.1)" : "rgba(232,217,176,.05)";
+    c.fillRect(pr() * 128, pr() * 128, 1.4, 1.4);
+  }
+  if (mossy) {
+    for (let k = 0; k < 30; k++) {
+      c.fillStyle = `rgba(92,122,58,${0.08 + pr() * 0.16})`;
+      c.beginPath(); c.arc(pr() * 128, 55 + pr() * 73, 2 + pr() * 6, 0, 7); c.fill();
+    }
+  }
+  return cv;
+}
+
+function wallTextures(): HTMLCanvasElement[] {
+  if (!wallTexCache) wallTexCache = [
+    makeWallTexture(1, false), makeWallTexture(2, false), makeWallTexture(3, false),
+    makeWallTexture(4, true), makeWallTexture(5, true),
+  ];
+  return wallTexCache;
+}
+
+/** Stable per-cell randomness so both co-op screens dress the dungeon alike. */
+const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
+
 const spriteCache: Record<string, HTMLCanvasElement> = {};
 function getSprite(key: string): HTMLCanvasElement {
   if (!spriteCache[key]) {
@@ -63,59 +125,137 @@ function poly(pts: [number, number][], fill: string): void {
   ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
 }
 
-function drawFrontWall(d: number, l: number): void {
+const DEPTH_DIM = [0, 0.1, 0.3, 0.5, 0.66];
+
+function drawFrontWall(d: number, l: number, wx: number, wy: number): void {
   const x0 = px(d, l - 0.5), x1 = px(d, l + 0.5), y0 = TYP(d), y1 = BYP(d), h = y1 - y0, w = x1 - x0;
-  ctx.fillStyle = FRONT[d]; ctx.fillRect(x0, y0, w, h);
-  if (d <= 3) { // stone courses fade with distance
-    const rows = 5;
-    ctx.strokeStyle = `rgba(0,0,0,${0.3 - d * 0.05})`; ctx.lineWidth = Math.max(1, 2.2 - d * 0.4);
-    for (let k = 1; k < rows; k++) {
-      const y = y0 + h * k / rows;
-      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-    }
-    for (let k = 0; k < rows; k++) {
-      const ya = y0 + h * k / rows, yb = y0 + h * (k + 1) / rows;
-      for (let j = (k % 2) ? 0.25 : 0.5; j < 1; j += 0.5) {
-        const x = x0 + w * j;
-        ctx.beginPath(); ctx.moveTo(x, ya); ctx.lineTo(x, yb); ctx.stroke();
-      }
-    }
-  }
+  const tex = wallTextures()[cellHash(wx, wy) % 5];
+  const tiles = w > 190 ? 2 : 1; // near faces get two texture tiles to stay crisp
+  for (let t = 0; t < tiles; t++) ctx.drawImage(tex, x0 + (w / tiles) * t, y0, w / tiles, h);
+  ctx.fillStyle = `rgba(8,5,3,${DEPTH_DIM[d]})`; ctx.fillRect(x0, y0, w, h);
   const sg = ctx.createLinearGradient(0, y0, 0, y1);
-  sg.addColorStop(0, "rgba(0,0,0,.34)"); sg.addColorStop(0.45, "rgba(0,0,0,0)");
-  sg.addColorStop(1, "rgba(0,0,0,.2)");
+  sg.addColorStop(0, "rgba(0,0,0,.3)"); sg.addColorStop(0.45, "rgba(0,0,0,0)");
+  sg.addColorStop(1, "rgba(0,0,0,.18)");
   ctx.fillStyle = sg; ctx.fillRect(x0, y0, w, h);
   ctx.strokeStyle = "rgba(0,0,0,.45)"; ctx.lineWidth = 1; ctx.strokeRect(x0, y0, w, h);
 }
 
-function drawSideWall(d: number, u: number): void {
+function drawSideWall(d: number, u: number, wx: number, wy: number): void {
   const xa = px(d, u), xb = px(d + 1, u);
   const yat = TYP(d), yab = BYP(d), ybt = TYP(d + 1), ybb = BYP(d + 1);
-  const quad: [number, number][] = [[xa, yat], [xb, ybt], [xb, ybb], [xa, yab]];
-  poly(quad, SIDE[d]);
-  if (d <= 2) { // converging courses
-    ctx.strokeStyle = `rgba(0,0,0,${0.26 - d * 0.05})`; ctx.lineWidth = Math.max(1, 2 - d * 0.4);
-    for (let k = 1; k < 5; k++) {
-      ctx.beginPath();
-      ctx.moveTo(xa, yat + (yab - yat) * k / 5);
-      ctx.lineTo(xb, ybt + (ybb - ybt) * k / 5);
-      ctx.stroke();
-    }
-    for (const t of [0.35, 0.7]) {
-      const x = xa + (xb - xa) * t;
-      ctx.beginPath();
-      ctx.moveTo(x, yat + (ybt - yat) * t);
-      ctx.lineTo(x, yab + (ybb - yab) * t);
-      ctx.stroke();
-    }
+  const tex = wallTextures()[cellHash(wx, wy) % 5];
+  const strips = d <= 1 ? 12 : 8; // perspective-mapped texture strips
+  const sw = tex.width / strips;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(xa, yat); ctx.lineTo(xb, ybt); ctx.lineTo(xb, ybb); ctx.lineTo(xa, yab);
+  ctx.closePath(); ctx.clip(); // smooth sloped edges — strips overdraw, the clip trims
+  for (let i = 0; i < strips; i++) {
+    const t0 = i / strips, t1 = (i + 1) / strips;
+    const sx0 = xa + (xb - xa) * t0, sx1 = xa + (xb - xa) * t1;
+    const syT = Math.min(yat + (ybt - yat) * t0, yat + (ybt - yat) * t1);
+    const syB = Math.max(yab + (ybb - yab) * t0, yab + (ybb - yab) * t1);
+    ctx.drawImage(tex, i * sw, 0, sw, tex.height, sx0, syT, sx1 - sx0 + 0.6, syB - syT);
   }
+  ctx.fillStyle = `rgba(8,5,3,${DEPTH_DIM[d] + 0.08})`; ctx.fill();
   const sg = ctx.createLinearGradient(xa, 0, xb, 0);
-  sg.addColorStop(0, "rgba(0,0,0,.04)"); sg.addColorStop(1, "rgba(0,0,0,.42)");
-  ctx.beginPath(); ctx.moveTo(quad[0][0], quad[0][1]);
-  for (let i = 1; i < 4; i++) ctx.lineTo(quad[i][0], quad[i][1]);
-  ctx.closePath(); ctx.fillStyle = sg; ctx.fill();
+  sg.addColorStop(0, "rgba(0,0,0,.05)"); sg.addColorStop(1, "rgba(0,0,0,.4)");
+  ctx.fillStyle = sg; ctx.fill();
+  ctx.restore();
   ctx.strokeStyle = "rgba(0,0,0,.45)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(xa, yat); ctx.lineTo(xa, yab); ctx.stroke();
+}
+
+/** A wall-mounted torch: bracket, breathing flame, and a pool of light. */
+function drawTorch(d: number, u: number, wx: number, wy: number): void {
+  const xa = px(d, u), xb = px(d + 1, u);
+  const tx = xa + (xb - xa) * 0.5;
+  const yt = TYP(d) + (TYP(d + 1) - TYP(d)) * 0.5;
+  const yb = BYP(d) + (BYP(d + 1) - BYP(d)) * 0.5;
+  const ty = yt + (yb - yt) * 0.34;
+  const s = HH[Math.min(d + 1, 4)] * (d === 0 ? 0.42 : 0.55);
+  const phase = (cellHash(wx, wy) % 97) / 97 * 6.28;
+  const fl = reduceMotion ? 1 : 0.85 + 0.22 * Math.sin(animT * 9 + phase) + 0.08 * Math.sin(animT * 23 + phase * 2);
+  // pool of light on the stone
+  const glow = ctx.createRadialGradient(tx, ty, 1, tx, ty, s * 2.6 * fl);
+  glow.addColorStop(0, "rgba(240,180,80,.28)");
+  glow.addColorStop(0.5, "rgba(224,154,60,.12)");
+  glow.addColorStop(1, "rgba(224,154,60,0)");
+  ctx.fillStyle = glow; ctx.fillRect(tx - s * 3, ty - s * 3, s * 6, s * 6);
+  // bracket
+  ctx.fillStyle = "#20150b";
+  ctx.fillRect(tx - s * 0.07, ty, s * 0.14, s * 0.55);
+  ctx.fillRect(tx - s * 0.16, ty + s * 0.5, s * 0.32, s * 0.1);
+  // flame
+  const fh = s * 0.65 * fl;
+  const fg = ctx.createRadialGradient(tx, ty - fh * 0.35, 0, tx, ty - fh * 0.35, fh);
+  fg.addColorStop(0, "rgba(255,242,190,.95)");
+  fg.addColorStop(0.35, "rgba(242,172,64,.85)");
+  fg.addColorStop(0.7, "rgba(200,80,40,.4)");
+  fg.addColorStop(1, "rgba(200,80,40,0)");
+  ctx.fillStyle = fg;
+  ctx.beginPath();
+  ctx.ellipse(tx, ty - fh * 0.35, fh * 0.5, fh * 0.85, (reduceMotion ? 0 : Math.sin(animT * 11 + phase) * 0.12), 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** A dark timber crossing the corridor ceiling between two depth planes. */
+function drawBeam(d: number): void {
+  const xt = (t: number, u: number) => px(d, u) + (px(d + 1, u) - px(d, u)) * t;
+  const yt = (t: number) => TYP(d) + (TYP(d + 1) - TYP(d)) * t;
+  const t0 = 0.12, t1 = 0.34;
+  ctx.fillStyle = "#1c1208";
+  ctx.beginPath();
+  ctx.moveTo(xt(t0, -0.55), yt(t0)); ctx.lineTo(xt(t0, 0.55), yt(t0));
+  ctx.lineTo(xt(t1, 0.55), yt(t1)); ctx.lineTo(xt(t1, -0.55), yt(t1));
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(xt(t1, -0.55), yt(t1)); ctx.lineTo(xt(t1, 0.55), yt(t1)); ctx.stroke();
+  ctx.strokeStyle = "rgba(232,217,176,.05)";
+  ctx.beginPath(); ctx.moveTo(xt(t0, -0.55), yt(t0)); ctx.lineTo(xt(t0, 0.55), yt(t0)); ctx.stroke();
+}
+
+/** Puddles that catch the torchlight, rubble, and cracked flagstones. */
+function drawFloorProps(d: number, l: number, wx: number, wy: number): void {
+  const h = cellHash(wx, wy);
+  const s = HH[Math.min(d + 1, 4)];
+  const cxm = CX + l * (CW[d] + CW[Math.min(d + 1, 4)]) / 2;
+  const fy = CY + HH[Math.min(d + 1, 4)] * 0.9;
+  if (h % 5 === 0) { // standing water
+    ctx.fillStyle = "rgba(24,38,52,.6)";
+    ctx.beginPath(); ctx.ellipse(cxm + ((h % 13) - 6) * s * 0.03, fy - s * 0.1, s * 0.55, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+    const sh = reduceMotion ? 0.5 : 0.3 + 0.5 * Math.abs(Math.sin(animT * 1.8 + h));
+    ctx.fillStyle = `rgba(150,180,205,${0.1 + 0.12 * sh})`;
+    ctx.beginPath(); ctx.ellipse(cxm - s * 0.13, fy - s * 0.13, s * 0.2, s * 0.045, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(224,154,60,${0.06 + 0.09 * sh})`;
+    ctx.beginPath(); ctx.ellipse(cxm + s * 0.16, fy - s * 0.08, s * 0.17, s * 0.04, 0, 0, Math.PI * 2); ctx.fill();
+    if (!reduceMotion) { // a drop falls from the dark above
+      const dp = (animT * (0.35 + (h % 5) * 0.08) + h * 0.13) % 3;
+      if (dp < 0.3) {
+        const t2 = dp / 0.3;
+        const ceilY = CY - HH[Math.min(d + 1, 4)] * 0.9;
+        const dropY = ceilY + (fy - s * 0.1 - ceilY) * t2;
+        ctx.fillStyle = "rgba(170,200,220,.5)";
+        ctx.fillRect(cxm - 0.7, dropY, 1.4, Math.max(2, s * 0.06));
+      }
+    }
+  } else if (h % 7 === 3) { // rubble
+    for (let i = 0; i < 4; i++) {
+      const p2 = ((h >> (i * 3)) % 17) / 17;
+      ctx.fillStyle = `rgb(${70 + p2 * 30 | 0},${55 + p2 * 22 | 0},${42 + p2 * 15 | 0})`;
+      ctx.beginPath();
+      ctx.ellipse(cxm + (p2 - 0.5) * s * 0.85, fy - s * 0.06 - (i % 2) * s * 0.05,
+        s * (0.06 + p2 * 0.07), s * (0.04 + p2 * 0.045), 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (h % 6 === 1) { // cracked flagstone
+    ctx.strokeStyle = "rgba(0,0,0,.32)"; ctx.lineWidth = Math.max(1, s * 0.028);
+    ctx.beginPath();
+    ctx.moveTo(cxm - s * 0.4, fy - s * 0.04);
+    ctx.lineTo(cxm - s * 0.1, fy - s * 0.16);
+    ctx.lineTo(cxm + s * 0.22, fy - s * 0.09);
+    ctx.stroke();
+  }
 }
 
 function drawFeature(c: string, d: number, l: number): void {
@@ -221,28 +361,40 @@ export function renderView(): void {
 
   for (let d = 4; d >= 0; d--) {
     const feats: [string, number, number][] = [];
+    const props: [number, number, number, number][] = [];
+    const beams: number[] = [];
     const mobsHere: [string, number, number, number, number][] = [];
     const lats: number[] = []; for (let l = -4; l <= 4; l++) lats.push(l);
     lats.sort((a, b) => Math.abs(b) - Math.abs(a));
     for (const l of lats) {
+      const wx = state.x + f[0] * d + r[0] * l, wy = state.y + f[1] * d + r[1] * l;
       if (isWall(d, l)) {
-        if (d < 4) { // side faces toward corridor center
-          if (l > 0 && !isWall(d, l - 1)) drawSideWall(d, l - 0.5);
-          if (l < 0 && !isWall(d, l + 1)) drawSideWall(d, l + 0.5);
+        if (d < 4) { // side faces toward corridor center, some carrying torches
+          if (l > 0 && !isWall(d, l - 1)) {
+            drawSideWall(d, l - 0.5, wx, wy);
+            if (d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l - 0.5, wx, wy);
+          }
+          if (l < 0 && !isWall(d, l + 1)) {
+            drawSideWall(d, l + 0.5, wx, wy);
+            if (d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l + 0.5, wx, wy);
+          }
         }
-        if (d >= 1) drawFrontWall(d, l);
+        if (d >= 1) drawFrontWall(d, l, wx, wy);
       } else {
         const c = at(d, l);
         // (you don't see the arch you're standing in)
         if (c !== "." && c !== "#" && Math.abs(l) <= 1 && d <= 3 && !(c === "E" && d === 0 && l === 0))
           feats.push([c, d, l]);
+        if (Math.abs(l) <= 2 && d >= 1 && d <= 3) props.push([d, l, wx, wy]);
+        if (l === 0 && d >= 1 && d <= 3 && cellHash(wx, wy) % 4 === 2) beams.push(d);
         if (Math.abs(l) <= 2 && d >= 1 && d <= 3) {
-          const wx = state.x + f[0] * d + r[0] * l, wy = state.y + f[1] * d + r[1] * l;
           const mob = mobAt(state.level, wx, wy);
           if (mob) mobsHere.push([mob.key, d, l, wx, wy]);
         }
       }
     }
+    for (const bd of beams) drawBeam(bd);
+    for (const [pd, pl, wx, wy] of props) drawFloorProps(pd, pl, wx, wy);
     for (const [c, fd, fl] of feats) drawFeature(c, fd, fl);
     for (const [k, md, ml, wx, wy] of mobsHere) drawMob(k, md, ml, wx, wy);
   }
