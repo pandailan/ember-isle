@@ -56,12 +56,47 @@
     padding:8px 12px; background:var(--panel);}
   .goldbar b{color:var(--amber); font-weight:600;}
 
-  /* roster */
+  /* roster & cards */
   .roster{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .rcard{border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--panel);
     cursor:pointer; display:flex; flex-direction:column; gap:4px;}
+  .rcard.r1{border-color:#4a5a3c;} .rcard.r2{border-color:#3d5a6b;}
+  .rcard.r3{border-color:var(--amber); box-shadow:0 0 12px rgba(224,154,60,.12);}
+  .rcard.carddown{opacity:.55;} .rcard.carddown .rname{color:var(--ember);}
   .rcard .rname{font-variant:small-caps; letter-spacing:.08em; font-size:1.02rem;}
   .rcard .rcls{color:var(--amber); font-size:.8rem; font-variant:small-caps; letter-spacing:.12em;}
+  .rcard.r1 .rcls{color:#8fae6a;} .rcard.r2 .rcls{color:#7fa8bd;}
+  .chips{display:flex; flex-wrap:wrap; gap:4px;}
+  .chip{font-size:.66rem; color:var(--parch-dim); border:1px solid var(--line-soft); border-radius:10px;
+    padding:1px 7px; font-variant:small-caps; letter-spacing:.06em;}
+  .inparty{color:var(--amber); font-size:.72rem; font-variant:small-caps; letter-spacing:.1em;}
+  .rcard button.recruit{min-height:38px; padding:6px 10px; font-size:.85rem; margin-top:4px;}
+
+  /* card detail overlay */
+  #card-overlay{position:fixed; inset:0; background:rgba(5,3,2,.8); z-index:40;
+    display:flex; align-items:center; justify-content:center; padding:16px;}
+  #card-overlay[hidden]{display:none;}
+  #card-panel{background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    max-width:480px; width:100%; max-height:86dvh; overflow-y:auto; padding:16px;
+    display:flex; flex-direction:column; gap:10px;}
+  #card-head h3{font-size:1.2rem;}
+  .traitbox{display:flex; flex-direction:column; gap:5px;}
+  .trow{display:flex; gap:8px; font-size:.82rem; align-items:baseline;}
+  .trow b{font-variant:small-caps; letter-spacing:.06em; white-space:nowrap;}
+  .skilltree{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .skillcol{display:flex; flex-direction:column; gap:6px;}
+  .skillcol h4{margin:0; font-size:.8rem; color:var(--amber); font-variant:small-caps; letter-spacing:.12em;}
+  .skillnode{display:flex; flex-direction:column; gap:2px; text-align:left; padding:8px 10px; min-height:0;
+    font-variant:normal; letter-spacing:0;}
+  .skillnode b{font-variant:small-caps; letter-spacing:.06em; font-size:.85rem;}
+  .skillnode span{font-size:.72rem; color:var(--parch-dim);}
+  .skillnode i{font-size:.68rem; color:var(--good); font-style:normal; font-variant:small-caps; letter-spacing:.08em;}
+  .skillnode.owned{border-color:var(--good); opacity:.9;}
+  .skillnode.avail{border-color:var(--amber);}
+  .skillnode.locked{opacity:.45;}
+
+  #bt-audio{position:fixed; right:10px; bottom:10px; z-index:50; min-height:36px; padding:6px 12px;
+    font-size:.78rem; opacity:.65; border-radius:16px;}
   .rcard .rblurb{color:var(--parch-dim); font-size:.8rem; line-height:1.35;}
   .rcard .rstats{font-family:var(--mono); font-size:.72rem; color:var(--parch-dim); font-variant-numeric:tabular-nums;}
   .rcard.sel{border-color:var(--amber); background:#221708; box-shadow:0 0 0 1px var(--amber) inset;}
@@ -152,13 +187,39 @@
     <p class="dim" style="font-size:.78rem; text-align:center;">Runs entirely in your browser · progress is saved on this device<br>Co-op: the host lights the Signal Fire in town and shares its code</p>
   </div>
 
-  <!-- TAVERN / PARTY SELECT -->
+  <!-- OPENING DRAFT -->
+  <div class="screen" id="scr-draft">
+    <h2>The Salted Gull</h2>
+    <p class="dim" style="font-size:.9rem;">Lanternlight, spilled ale, and eight strangers who have
+      nowhere left to go. Choose <b style="color:var(--parch)">four</b> to descend with you —
+      the rest sail on the morning tide.</p>
+    <div class="roster" id="draft-roster"></div>
+    <button class="primary" id="bt-setout" disabled>Set Out (0 / 4)</button>
+  </div>
+
+  <!-- TAVERN: COMPANY & VISITORS -->
   <div class="screen" id="scr-tavern">
     <h2>The Salted Gull</h2>
-    <p class="dim" style="font-size:.9rem;">Lanternlight, spilled ale, and eight sellswords who have
-      nowhere left to go. Choose <b style="color:var(--parch)">four</b> to descend with you.</p>
-    <div class="roster" id="roster"></div>
-    <button class="primary" id="bt-setout" disabled>Set Out (0 / 4)</button>
+    <div class="goldbar"><span>Gold <b id="tav-gold">0</b></span><span id="tav-day"></span></div>
+    <h3>Your Company</h3>
+    <p class="dim" style="font-size:.82rem;">Tap a card to inspect it, spend skill points, or change the marching four.</p>
+    <div class="roster" id="company"></div>
+    <h3>Tonight's Visitors</h3>
+    <div class="roster" id="visitors"></div>
+    <div class="btnrow">
+      <button id="bt-tav-rest">Rest the Company · 12 g</button>
+      <button id="bt-tav-back" class="primary">Back to the Harbor</button>
+    </div>
+    <p class="dim" id="tav-msg" style="font-size:.85rem; min-height:1.3em;"></p>
+  </div>
+
+  <!-- CARD DETAIL OVERLAY -->
+  <div id="card-overlay" hidden>
+    <div id="card-panel">
+      <div id="card-head"></div>
+      <div id="card-body"></div>
+      <div class="btnrow" id="card-actions"></div>
+    </div>
   </div>
 
   <!-- TOWN -->
@@ -254,6 +315,8 @@
   </div>
 
 </div>
+
+<button id="bt-audio" aria-label="Toggle sound">♪</button>
 
 <!--BUNDLE-->
 <!-- EI:content-end -->

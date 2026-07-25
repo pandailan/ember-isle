@@ -1,4 +1,4 @@
-import type { ClassDef, SpellDef, RosterEntry, EnemyDef, ChestLoot } from "./types";
+import type { ClassDef, SpellDef, EnemyDef, ChestLoot } from "./types";
 
 export const CLASSES: Record<string, ClassDef> = {
   Knight:  {hp:34, mp:0,  atk:9, def:7, spd:5, g:{hp:7,mp:0,atk:2,def:2,spd:1}, spells:[]},
@@ -10,24 +10,18 @@ export const CLASSES: Record<string, ClassDef> = {
 };
 
 export const SPELLS: Record<string, SpellDef> = {
-  heal:  {n:"Heal",       mp:4,  kind:"ally",    d:m=>20+2*m.lvl, txt:"mends"},
-  prayer:{n:"Prayer",     mp:10, kind:"allies",  d:m=>14+m.lvl,   txt:"mends"},
-  revive:{n:"Revive",     mp:12, kind:"fallen",  d:()=>0,         txt:"raises"},
-  fire:  {n:"Firebolt",   mp:3,  kind:"enemy",   d:m=>13+3*m.lvl, txt:"scorches"},
-  wave:  {n:"Flame Wave", mp:9,  kind:"enemies", d:m=>10+2*m.lvl, txt:"engulfs"},
-  smite: {n:"Smite",      mp:5,  kind:"enemy",   d:m=>15+2*m.lvl, txt:"smites", holy:true},
+  heal:  {n:"Heal",        mp:4,  kind:"ally",    d:m=>20+2*m.lvl, txt:"mends"},
+  prayer:{n:"Prayer",      mp:10, kind:"allies",  d:m=>14+m.lvl,   txt:"mends"},
+  revive:{n:"Revive",      mp:12, kind:"fallen",  d:()=>0,         txt:"raises"},
+  fire:  {n:"Firebolt",    mp:3,  kind:"enemy",   d:m=>13+3*m.lvl, txt:"scorches"},
+  wave:  {n:"Flame Wave",  mp:9,  kind:"enemies", d:m=>10+2*m.lvl, txt:"engulfs"},
+  smite: {n:"Smite",       mp:5,  kind:"enemy",   d:m=>15+2*m.lvl, txt:"smites", holy:true},
+  // physical arts unlocked through skill trees
+  cleave:{n:"Cleave",      mp:0,  kind:"enemies", txt:"cleaves through", phys:true, mult:0.6},
+  dshot: {n:"Double Shot", mp:0,  kind:"enemy",   txt:"peppers",  phys:true, mult:0.65, hits:2},
+  bstab: {n:"Backstab",    mp:0,  kind:"enemy",   txt:"knifes",   phys:true, mult:1.5, critBonus:0.25},
+  storm: {n:"Cinder Storm",mp:12, kind:"enemies", d:m=>18+2*m.lvl, txt:"immolates"},
 };
-
-export const ROSTER: RosterEntry[] = [
-  {name:"Sir Aldric",      cls:"Knight",   blurb:"Once captain of the harbor watch. Still wears the badge."},
-  {name:"Dame Isolde",     cls:"Paladin",  blurb:"Swore an oath to the Tide. The Tide has not answered lately."},
-  {name:"Mira Thorn",      cls:"Ranger",   blurb:"Hunted the cliffs before the birds went quiet."},
-  {name:"Finn Vole",       cls:"Rogue",    blurb:"Claims he has already been down the Stair. Twice."},
-  {name:"Brother Odo",     cls:"Cleric",   blurb:"Left the temple with its last relic and no permission."},
-  {name:"Zephyra",         cls:"Sorcerer", blurb:"Came to the isle to study the Ember. Now she means to end it."},
-  {name:"Grimbold Ashhand",cls:"Knight",   blurb:"A smith who forged his own eulogy, then a sword to outlive it."},
-  {name:"Sella of the Vale",cls:"Cleric",  blurb:"Sings to the wounded. The wounded, so far, recover."},
-];
 
 export const ENEMIES: Record<string, EnemyDef> = {
   rat: {n:"Cave Rat",     hp:12, atk:6,  def:0, spd:9, xp:8,  g:5,  hue:"#8a7a52"},
