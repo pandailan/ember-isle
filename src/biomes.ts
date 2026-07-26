@@ -305,10 +305,59 @@ export function biomeNormalMaps(biome: Biome): HTMLCanvasElement[] {
   return normalCache[biome.id];
 }
 
-/** A tiling floor texture per biome (flagstones / cobbles / scorched basalt). */
+/** Organic outdoor ground: dirt mottled with growth, no masonry grid. */
+function bakeGround(base: [number, number, number], grass: [number, number, number], grassAmt: number): HTMLCanvasElement {
+  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128;
+  const c = cv.getContext("2d")!;
+  let pi = 0;
+  const pr = () => { const v = Math.sin(97.13 + (pi++) * 127.1) * 43758.5453; return v - Math.floor(v); };
+  const [br, bg, bb] = base;
+  c.fillStyle = `rgb(${br},${bg},${bb})`; c.fillRect(0, 0, 128, 128);
+  const WRAP: [number, number][] = [[0, 0], [-128, 0], [0, -128], [-128, -128]];
+  // soft earth mottling
+  for (let k = 0; k < 46; k++) {
+    const x = pr() * 128, y = pr() * 128, r = 5 + pr() * 16;
+    const dk = 0.82 + pr() * 0.36;
+    c.fillStyle = `rgba(${Math.round(br * dk)},${Math.round(bg * dk)},${Math.round(bb * dk)},.32)`;
+    for (const [ox, oy] of WRAP) { c.beginPath(); c.arc(x + ox, y + oy, r, 0, 7); c.fill(); }
+  }
+  // grass: clumps of short strokes leaning every way
+  const [gr, gg, gb] = grass;
+  for (let k = 0; k < grassAmt; k++) {
+    const x = pr() * 128, y = pr() * 128;
+    const shade = 0.75 + pr() * 0.5;
+    c.strokeStyle = `rgba(${Math.round(gr * shade)},${Math.round(gg * shade)},${Math.round(gb * shade)},.65)`;
+    c.lineWidth = 1.1;
+    for (let b = 0; b < 4; b++) {
+      const a = pr() * 6.28, ln = 2 + pr() * 3.5;
+      for (const [ox, oy] of WRAP) {
+        c.beginPath(); c.moveTo(x + ox + (pr() - 0.5) * 4, y + oy + (pr() - 0.5) * 4);
+        c.lineTo(x + ox + Math.cos(a) * ln, y + oy + Math.sin(a) * ln - 1.5);
+        c.stroke();
+      }
+    }
+  }
+  // small stones and grit
+  for (let k = 0; k < 40; k++) {
+    const light = pr() < 0.5;
+    c.fillStyle = light ? "rgba(190,182,160,.28)" : "rgba(8,6,4,.3)";
+    c.fillRect(pr() * 128, pr() * 128, 1 + pr() * 1.6, 1 + pr() * 1.3);
+  }
+  return cv;
+}
+
+/** A tiling floor texture per biome (flagstones / cobbles / earth and growth). */
 const floorCache: Record<string, HTMLCanvasElement> = {};
 export function biomeFloorTexture(biome: Biome): HTMLCanvasElement {
   if (!floorCache[biome.id]) {
+    if (biome.id === "moor") { // peat and heather-grass
+      floorCache[biome.id] = bakeGround([56, 47, 34], [66, 90, 46], 150);
+      return floorCache[biome.id];
+    }
+    if (biome.id === "cove") { // sand with dry tussocks
+      floorCache[biome.id] = bakeGround([120, 107, 78], [108, 102, 58], 55);
+      return floorCache[biome.id];
+    }
     const spec: WallTexSpec = {...biome.tex, style: "stone",
       base: biome.id === "harbor" ? [64, 66, 76]
         : biome.id === "moor" ? [46, 58, 38]

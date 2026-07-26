@@ -80,6 +80,14 @@
   fireflies, and sea stay visible behind the fight. Same turn engine, same
   co-op seats and host-migration adoption — only the stage changed.
 
+- **The isle underfoot and on the horizon** — outdoor ground is real earth
+  now: peat mottled with grass on the moor, sand with dry tussocks at the
+  cove, baked with no masonry grid. The wilds occasionally hold older
+  stonework — broken house corners, leaning doorways, tilted shrine slabs —
+  and the isle's lighthouse stands on its rock off every open shore: a
+  red-banded tower whose lantern wakes at dusk, twin beams turning over the
+  sea all night, visible from the moor coast and above the harbor rooftops.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

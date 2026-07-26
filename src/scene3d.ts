@@ -112,6 +112,62 @@ let cloudMat: THREE.MeshBasicMaterial | null = null;
 let cloudTex: THREE.CanvasTexture | null = null;
 let cloudA = 0; // current target opacity, eased in frame
 
+/* the lighthouse turns all night on its rock */
+let lhBeacon: THREE.Group | null = null;
+let lhBeamMat: THREE.MeshBasicMaterial | null = null;
+let lhLampMat: THREE.MeshStandardMaterial | null = null;
+let lhGlow: THREE.Sprite | null = null;
+
+function buildLighthouse(px: number, pz: number): void {
+  const g = new THREE.Group();
+  g.position.set(px, 0, pz);
+  // the rock it stands on
+  for (const [ox, oz, r] of [[0, 0, 1.25], [0.9, 0.5, 0.8], [-0.8, -0.4, 0.7]] as [number, number, number][]) {
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), boulderMat);
+    rock.position.set(ox, r * 0.3, oz); rock.scale.y = 0.6;
+    g.add(rock);
+  }
+  // banded tower
+  const bands = [0xb8b0a2, 0x9a3c2c, 0xb8b0a2];
+  for (let i = 0; i < 3; i++) {
+    const r0 = 0.82 - i * 0.14, r1 = 0.68 - i * 0.14;
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, 1.75, 10),
+      new THREE.MeshStandardMaterial({color: bands[i], roughness: 0.9}));
+    seg.position.y = 0.7 + 1.75 * i + 0.875;
+    g.add(seg);
+  }
+  // gallery + lantern room
+  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.16, 10), ironMat);
+  gallery.position.y = 0.7 + 5.25 + 0.08;
+  g.add(gallery);
+  lhLampMat = new THREE.MeshStandardMaterial({color: 0xffe9b0, emissive: 0xffc860, emissiveIntensity: 0.3});
+  const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.55, 8), lhLampMat);
+  lantern.position.y = 0.7 + 5.25 + 0.44;
+  g.add(lantern);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.44, 0.4, 8), ironMat);
+  cap.position.y = 0.7 + 5.25 + 0.92;
+  g.add(cap);
+  lhGlow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTexture("rgba(255,220,140,.9)"), transparent: true, opacity: 0, depthWrite: false}));
+  lhGlow.position.y = 0.7 + 5.25 + 0.44;
+  lhGlow.scale.setScalar(2.2);
+  g.add(lhGlow);
+  // two opposed beams that the night turns
+  lhBeacon = new THREE.Group();
+  lhBeacon.position.y = 0.7 + 5.25 + 0.44;
+  lhBeamMat = new THREE.MeshBasicMaterial({color: 0xfff0c2, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide});
+  const beamGeo = new THREE.ConeGeometry(1.5, 16, 10, 1, true);
+  beamGeo.translate(0, -8, 0);
+  beamGeo.rotateX(Math.PI / 2); // the beam lies flat, reaching outward
+  for (const rot of [0, Math.PI]) {
+    const beam = new THREE.Mesh(beamGeo, lhBeamMat);
+    beam.rotation.y = rot;
+    lhBeacon.add(beam);
+  }
+  g.add(lhBeacon);
+  worldGroup.add(g);
+}
+
 /* gulls riding the harbor air */
 interface Gull { sp: THREE.Sprite; cx: number; cz: number; r: number; h: number; speed: number; phase: number; }
 let gulls: Gull[] = [];
@@ -384,9 +440,57 @@ const stoneMat = new THREE.MeshStandardMaterial({color: 0x4a4640, roughness: 0.9
 const boulderMat = new THREE.MeshStandardMaterial({color: 0x333a30, roughness: 0.98});
 const wildFolMat = new THREE.MeshStandardMaterial({color: 0x16261a, roughness: 0.95});
 
+const ruinMat = new THREE.MeshStandardMaterial({color: 0x413e36, roughness: 0.97});
+
+/** A landmark left by older hands: broken walls, a leaning arch, a fallen shrine. */
+function buildRuin(g: THREE.Group, h: number): void {
+  const kind = h % 3;
+  if (kind === 0) { // the corner of a house no one remembers
+    const walls: [number, number, number, number, number][] = [
+      // [x, z, w, d, height]
+      [0.28, 0.18, 0.5, 0.09, 0.55 + (h % 4) * 0.08],
+      [0.16, 0.36, 0.09, 0.42, 0.4 + ((h >> 2) % 4) * 0.07],
+      [0.72, 0.7, 0.34, 0.09, 0.2 + ((h >> 4) % 3) * 0.06],
+    ];
+    for (const [wx, wz, ww, wd, wh] of walls) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(ww, wh, wd), ruinMat);
+      wall.position.set(wx, wh / 2, wz);
+      g.add(wall);
+      // a crumbled course on top
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(ww * 0.55, 0.07, wd * 0.9), ruinMat);
+      cap.position.set(wx + ww * 0.12, wh + 0.035, wz);
+      cap.rotation.y = ((h >> 3) % 5 - 2) * 0.06;
+      g.add(cap);
+    }
+  } else if (kind === 1) { // a doorway that outlived its door
+    const tall = 0.72 + (h % 3) * 0.06;
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.13, tall, 0.13), ruinMat);
+    p1.position.set(0.3, tall / 2, 0.5); g.add(p1);
+    const short = tall * 0.45;
+    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.13, short, 0.13), ruinMat);
+    p2.position.set(0.7, short / 2, 0.5); p2.rotation.z = 0.05; g.add(p2);
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.15), ruinMat);
+    lintel.position.set(0.38, tall + 0.02, 0.5); lintel.rotation.z = -0.35; g.add(lintel);
+  } else { // a shrine slab, knelt-at once, tilted now
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.42), ruinMat);
+    plinth.position.set(0.5, 0.06, 0.5); g.add(plinth);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.08), ruinMat);
+    slab.position.set(0.5, 0.34, 0.52);
+    slab.rotation.x = 0.18; slab.rotation.z = ((h >> 2) % 5 - 2) * 0.05;
+    g.add(slab);
+  }
+  PROPS3D.pebbles({group: g, x: 0, z: 0, hash: h >> 3, biome: BIOMES.moor});
+  PROPS3D.tuft({group: g, x: 0, z: 0, hash: h >> 5, biome: BIOMES.moor});
+}
+
 /** Impassable wilds: boulder clusters and dense thickets where a dungeon would have masonry. */
 function buildWilds(x: number, y: number, h: number): void {
   const g = new THREE.Group(); g.position.set(x, 0, y);
+  if (h % 7 === 3) { // now and then, older stonework
+    buildRuin(g, h >> 1);
+    worldGroup.add(g);
+    return;
+  }
   if (h % 3 === 0) { // a stand of pines too dense to push through
     for (let i = 0; i < 3; i++) {
       const th = 0.4 + ((h >> (i * 2)) % 4) * 0.08;
@@ -656,6 +760,7 @@ export function buildLevel(): void {
   anchors = []; consumables = []; flameSprites = []; fireGroup = null; labels = [];
   starsMat = null; moonSpr = null; sunSpr = null; dimmables = []; swayers = []; shimmers = [];
   cloudMesh = null; cloudMat = null; gulls = [];
+  lhBeacon = null; lhBeamMat = null; lhLampMat = null; lhGlow = null;
   for (const mv of mobViews) { scene.remove(mv.sprite); scene.remove(mv.shadow); }
   mobViews = [];
 
@@ -696,11 +801,15 @@ export function buildLevel(): void {
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(mw / 2, 0, mh / 2);
   worldGroup.add(floor);
-  if (isMoor || isCove) { // open sea runs to the horizon under the fog
+  if (town) { // it is an isle: open sea runs to the horizon under every sky
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), getWaterMats()[1]);
     sea.rotation.x = -Math.PI / 2;
     sea.position.set(mw / 2, -0.05, mh / 2);
     worldGroup.add(sea);
+    // the isle's lighthouse, out on its rock
+    if (isHarbor) buildLighthouse(mw * 0.72, -7.5);
+    else if (isMoor) buildLighthouse(mw + 6.5, mh * 0.32);
+    else if (isCove) buildLighthouse(mw + 5, -3);
   }
   if (!town) {
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(mw, mh),
@@ -1153,6 +1262,14 @@ export function frame(dt: number): void {
   if (cloudMat && cloudTex) {
     cloudMat.opacity += (cloudA - cloudMat.opacity) * (1 - Math.exp(-dt * 0.8));
     if (!reduceMotion) { cloudTex.offset.x += dt * 0.0065 * windK; cloudTex.offset.y += dt * 0.0022 * windK; }
+  }
+  // the lighthouse wakes with the dark, and its beams walk the sea
+  if (lhBeacon && lhBeamMat && lhLampMat && lhGlow) {
+    const on = Math.min(1, Math.max(0, (nightK - 0.12) / 0.35));
+    if (!reduceMotion) lhBeacon.rotation.y = animT * 0.55;
+    lhBeamMat.opacity = 0.13 * on;
+    lhLampMat.emissiveIntensity = 0.3 + 2.6 * on;
+    lhGlow.material.opacity = 0.85 * on;
   }
   // gulls circle on the day's air, wings answering in turn
   for (const gl of gulls) {
