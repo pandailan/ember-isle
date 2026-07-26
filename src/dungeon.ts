@@ -10,7 +10,9 @@ import { view, amap, renderView } from "./render";
 import { net } from "./net";
 import { setScene, sfx } from "./audio";
 
-const dungeonScene = () => (state.level >= 2 ? "deep" as const : "dungeon" as const);
+const dungeonScene = () =>
+  state.level === 0 || state.level === 3 ? "town" as const
+  : state.level >= 2 ? "deep" as const : "dungeon" as const;
 
 let logLines: string[] = [];
 let engagedMob: Mob | null = null;
@@ -46,6 +48,7 @@ export function enterDungeon(fresh: boolean): void {
     // the caves refill while you're topside
     state.mobs[1] = spawnMobs(1, state.mobs[1]);
     state.mobs[2] = spawnMobs(2, state.mobs[2]);
+    state.mobs[3] = spawnMobs(3, state.mobs[3]);
     logLines = []; dlog("The Old Stair ends in torch-dark. The air tastes of cinders.");
   } else {
     logLines = []; dlog("You take up your torches where you left them.");
@@ -112,10 +115,11 @@ export function step(back: boolean, byGuest = false): void {
   const cell = cellAt(state.level, nx, ny);
   if (cell === "#") {
     sfx("bump");
-    dlog(state.level === 0 ? "A shuttered wall. The town sleeps." : "Stone. You are not the first to test it.");
+    dlog(state.level === 0 ? "A shuttered wall. The town sleeps."
+      : state.level === 3 ? "A thicket of thorn and stone. No way through." : "Stone. You are not the first to test it.");
     renderView(); return;
   }
-  if (state.level === 0 && TOWN_SOLID.includes(cell)) {
+  if ((state.level === 0 || state.level === 3) && TOWN_SOLID.includes(cell)) {
     if (byGuest) { dlog("Your host must be the one to knock."); return; }
     sfx("tap");
     app.townDoor(cell);

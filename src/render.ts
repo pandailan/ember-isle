@@ -58,7 +58,8 @@ export function renderAutomap(): void {
   const ox = (120 - cs * mw) / 2, oy = (120 - cs * mh) / 2;
   const FEAT_HUE: Record<string, string> =
     {C: "#e0b24c", S: "#e8d9b0", U: "#e8d9b0", F: "#7fa8bd", B: "#c8502f", E: "#8fae6a",
-     T: "#e0b24c", P: "#c8502f", M: "#7fa8bd", O: "#b8b0a0", H: "#8fae6a", G: "#e09a3c", R: "#b8a888"};
+     T: "#e0b24c", P: "#c8502f", M: "#7fa8bd", O: "#b8b0a0", H: "#8fae6a", G: "#e09a3c", R: "#b8a888",
+     W: "#8fae6a", V: "#8fae6a"};
   for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
     if (!vis.has(x + "," + y)) continue;
     const c = cellAt(state.level, x, y);
@@ -163,6 +164,17 @@ export function drawMonster(cv: HTMLCanvasElement, key: string, hue: string): vo
     c.fillStyle = "#c8502f"; c.beginPath(); c.arc(0, 10, 3.4, 0, 7); c.fill();
     c.strokeStyle = "#c8502f"; c.globalAlpha = .4; c.beginPath(); c.arc(0, 10, 6, 0, 7); c.stroke(); c.globalAlpha = 1;
     eye(-3.5, -11, 1.8, "#e09a3c"); eye(3.5, -11, 1.8, "#e09a3c");
+  } else if (key === "wlf") {
+    c.strokeStyle = mid; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(22, 10); c.quadraticCurveTo(38, 4, 34, -10); c.stroke(); // tail
+    c.fillStyle = "#1a2028";
+    c.beginPath(); c.ellipse(4, 8, 22, 12, 0, 0, 7); c.fill();                        // body
+    c.beginPath(); c.ellipse(-18, -4, 12, 9, -0.3, 0, 7); c.fill();                   // head
+    c.beginPath(); c.moveTo(-28, -6); c.lineTo(-36, -2); c.lineTo(-26, 0); c.closePath(); c.fill(); // snout
+    c.beginPath(); c.moveTo(-20, -12); c.lineTo(-16, -22); c.lineTo(-12, -12); c.closePath(); c.fill(); // ear
+    c.beginPath(); c.moveTo(-12, -12); c.lineTo(-8, -20); c.lineTo(-4, -11); c.closePath(); c.fill();
+    for (const lx of [-8, 2, 12]) c.fillRect(lx, 16, 3.5, 8);                          // legs
+    eye(-22, -6, 2.2, "#b8d0e0");
   } else if (key === "gol") {
     c.fillStyle = "#3d3a35"; c.fillRect(-16, -24, 32, 22);
     c.fillRect(-22, -2, 44, 26);

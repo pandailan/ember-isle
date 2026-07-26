@@ -32,7 +32,7 @@ export interface Biome {
   ambientBottom: string;
   /** The party's own light (color + reach), drawn at the view's heart. */
   playerLight: {color: string; radius: number};
-  sparks: "ember" | "heavy-ember" | "none";
+  sparks: "ember" | "heavy-ember" | "firefly" | "none";
   beams: boolean;                                  // timber ceiling beams
   tex: WallTexSpec;
   wallProps: PropPlacement[];
@@ -106,11 +106,34 @@ export const BIOMES: Record<string, Biome> = {
       {id: "crack", mod: 4, rem: 2},
     ],
   },
+  moor: {
+    id: "moor",
+    sky: true,
+    ceiling: {top: "#070b16", bottom: "#141a14"},
+    floor: {top: "#10160e", bottom: "#242c1e"},
+    ambientTop: "rgb(170,182,196)",
+    ambientHorizon: "rgb(104,116,110)",
+    ambientBottom: "rgb(88,100,86)",
+    playerLight: {color: "rgba(195,210,230,.28)", radius: 360},
+    sparks: "firefly",
+    beams: false,
+    tex: {style: "stone", base: [54, 58, 46], mortar: "#161a12",
+          blockW: [46, 84], blockH: [34, 60], crackDensity: 4,
+          mossColor: "rgba(88,118,62,", variants: 4},
+    wallProps: [],
+    floorProps: [
+      {id: "tree", mod: 4, rem: 1, offPath: true},
+      {id: "rubble", mod: 6, rem: 2},
+      {id: "mushrooms", mod: 9, rem: 4, offPath: true},
+      {id: "puddle", mod: 7, rem: 3},
+    ],
+  },
 };
 
 export function biomeFor(level: number): Biome {
   if (level === 0) return BIOMES.harbor;
-  if (level >= 2) return BIOMES.emberdeep;
+  if (level === 3) return BIOMES.moor;
+  if (level === 2) return BIOMES.emberdeep;
   return BIOMES.caves;
 }
 
@@ -251,7 +274,9 @@ const floorCache: Record<string, HTMLCanvasElement> = {};
 export function biomeFloorTexture(biome: Biome): HTMLCanvasElement {
   if (!floorCache[biome.id]) {
     const spec: WallTexSpec = {...biome.tex, style: "stone",
-      base: biome.id === "harbor" ? [64, 66, 76] : biome.tex.base.map(v => Math.round(v * 0.72)) as [number, number, number],
+      base: biome.id === "harbor" ? [64, 66, 76]
+        : biome.id === "moor" ? [46, 58, 38]
+        : biome.tex.base.map(v => Math.round(v * 0.72)) as [number, number, number],
       blockW: [24, 44], blockH: [24, 44], crackDensity: biome.tex.crackDensity + 1, variants: 1,
       mossColor: undefined, veinColor: biome.tex.veinColor};
     floorCache[biome.id] = bakeTexture(spec, 0);

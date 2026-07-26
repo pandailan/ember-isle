@@ -32,16 +32,18 @@ export const ENEMIES: Record<string, EnemyDef> = {
   wra: {n:"Cave Wraith",  hp:30, atk:11, def:2, spd:8, xp:42, g:20, hue:"#7fa8bd", undead:true, pierce:true},
   cul: {n:"Ember Cultist",hp:32, atk:9,  def:3, spd:6, xp:45, g:30, hue:"#c8502f", caster:true},
   gol: {n:"Stone Golem",  hp:55, atk:14, def:8, spd:2, xp:60, g:40, hue:"#8a8a8a"},
+  wlf: {n:"Moor Wolf",    hp:20, atk:9,  def:1, spd:11,xp:16, g:10, hue:"#8a9aa8"},
   boss:{n:"Pyrelord Vhal",hp:240,atk:17, def:6, spd:7, xp:600,g:500,hue:"#e09a3c", boss:true},
 };
 
 export const GROUPS: Record<number, string[][]> = {
   1:[["rat","rat"],["rat","rat","rat"],["sli","sli"],["gob"],["gob","rat"],["gob","gob"],["ske"],["ske","rat","rat"],["sli","gob"]],
   2:[["orc"],["orc","gob","gob"],["wra"],["cul","ske"],["orc","orc"],["gol"],["cul","wra"],["ske","ske","ske"],["gol","cul"]],
+  3:[["wlf"],["wlf","wlf"],["wlf","wlf","wlf"],["gob","rat"],["rat","rat","rat"],["sli","sli"],["wlf","gob"]],
 };
 
 /** Town cells that stop you and open something when you walk into them. */
-export const TOWN_DOORS = "TPMOH"; // tavern, provisions, temple, old stair, harbor
+export const TOWN_DOORS = "TPMOHWV"; // tavern, provisions, temple, old stair, harbor, moor gate, village gate
 export const TOWN_PROPS = "GR";    // signal fire, trading stall (free-standing)
 export const TOWN_SOLID = TOWN_DOORS + TOWN_PROPS;
 
@@ -50,12 +52,22 @@ export const MAPS: Record<number, string[]> = {
      "#T###P###M###O#",
      "#.............#",
      "#.##.......##.#",
-     "#......G......#",
+     "W......G......#",
      "#.##.......##.#",
      "#......R......#",
      "#.............#",
      "######H########",
      "###############"],
+  3:["#################",
+     "#V....#....##...#",
+     "#..#............#",
+     "#......##...#.C.#",
+     "#.###........##.#",
+     "#...#..#........#",
+     "#.C....#..F.....#",
+     "#..##........#..#",
+     "#......#........#",
+     "#################"],
   1:["###############",
      "#E....#...#..C#",
      "#.###.#.#.#.#.#",
@@ -85,11 +97,14 @@ export const MAPS: Record<number, string[]> = {
 
 export const LEVEL_NAMES: Record<number, string> = {
   0:"Vhalis Harbor · Night",
+  3:"The Moor of Vhalis · Night",
   1:"The Ember Caves · Depth I",
   2:"The Ember Deep · Depth II",
 };
 
 export const CHESTS: Record<string, ChestLoot> = {
+  "3:14,3":{gold:55, potions:1, note:"a peddler's abandoned pack"},
+  "3:2,6": {gold:70, potions:1, note:"a barrow-stone cache"},
   "1:13,1":{gold:60, potions:1, note:"a smuggler's cache"},
   "1:1,9": {gold:45, potions:1, note:"a rotted strongbox"},
   "2:13,1":{gold:150,potions:2, note:"a cultist's tithe chest"},

@@ -101,14 +101,14 @@ export function rollVisitors(state: GameState): Member[] {
 export function todayStamp(): string { return new Date().toDateString(); }
 
 /* ============================== WORLD MOBS ============================== */
-const MOB_COUNT: Record<number, number> = {1: 6, 2: 7};
+const MOB_COUNT: Record<number, number> = {1: 6, 2: 7, 3: 7};
 
 /** Populate a depth with visible, roaming monster packs. */
 export function spawnMobs(level: number, existing: Mob[] = []): Mob[] {
   const map = MAPS[level];
   const mobs = [...existing];
   const taken = new Set(mobs.map(m => m.x + "," + m.y));
-  const entry = level === 1 ? [1, 1] : [1, 1];
+  const entry = level === 3 ? [2, 1] : [1, 1];
   let guard = 0;
   while (mobs.length < MOB_COUNT[level] && guard++ < 400) {
     const y = ri(map.length), x = ri(map[0].length);
@@ -167,6 +167,7 @@ export function cleanupLend(s: GameState): void {
 /* ============================== SAVE MIGRATION ============================== */
 /** Upgrade a pre-card (v1) save in place: members become common cards. */
 export function migrateState(s: GameState & {version?: number}): GameState {
+  if (s.mobs) s.mobs[3] = s.mobs[3] ?? spawnMobs(3); // the moor opened after some saves were written
   if (s.version === 2) return s;
   for (const m of s.party ?? []) {
     m.id = m.id ?? genId();
@@ -178,7 +179,7 @@ export function migrateState(s: GameState & {version?: number}): GameState {
   s.collection = s.collection ?? [];
   s.visitors = s.visitors ?? [];
   s.visitorsDay = s.visitorsDay ?? "";
-  s.mobs = s.mobs ?? {1: spawnMobs(1), 2: spawnMobs(2)};
+  s.mobs = s.mobs ?? {1: spawnMobs(1), 2: spawnMobs(2), 3: spawnMobs(3)};
   s.version = 2;
   return s;
 }

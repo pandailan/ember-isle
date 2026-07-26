@@ -27,6 +27,18 @@ export function townDoorBump(c: string): void {
       else app.dlog("The harbormaster shakes his head. “While the Ember burns below, the fog holds the bay.”");
       break;
     case "G": townSignal(); break;
+    case "W": { // through the west gate, onto the moor
+      state.level = 3; state.x = 2; state.y = 1; state.dir = 1;
+      state.inDungeon = true; save();
+      app.enterWalk("The gate groans open. The moor rolls away under the moon, and things howl in it.");
+      break;
+    }
+    case "V": { // back through the gate into Vhalis
+      state.level = 0; state.x = 1; state.y = 4; state.dir = 1;
+      state.inDungeon = false;
+      app.openTown("The gate shuts behind you. Lamplight, cobbles, home.");
+      break;
+    }
     case "R":
       if (net.connected) app.openTrade();
       else app.dlog("An empty stall. With a companion linked, you could barter cards here.");

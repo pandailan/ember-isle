@@ -45,9 +45,13 @@ let flameSprites: {sprite: THREE.Sprite; base: number; phase: number}[] = [];
 interface MobView { sprite: THREE.Sprite; shadow: THREE.Mesh; cur: THREE.Vector3; key: string; }
 let mobViews: MobView[] = [];
 
-/* ember particles */
+/* signpost labels fade out when you stand under them */
+let labels: {sprite: THREE.Sprite; pos: THREE.Vector3}[] = [];
+
+/* drifting particles: rising embers below, wandering fireflies under the sky */
 let emberPoints: THREE.Points | null = null;
 let emberData: Float32Array | null = null;
+let emberMode: "rise" | "drift" = "rise";
 
 /* ---------- texture helpers ---------- */
 const texCache = new Map<HTMLCanvasElement, THREE.CanvasTexture>();
@@ -124,12 +128,64 @@ function doorTexture(door: string, facade: HTMLCanvasElement): THREE.CanvasTextu
     c.beginPath(); c.moveTo(0, -is * 0.6); c.lineTo(0, is * 0.4);
     c.moveTo(-is * 0.45, -is * 0.25); c.lineTo(is * 0.45, -is * 0.25);
     c.arc(0, is * 0.05, is * 0.5, 0.5, Math.PI - 0.5); c.stroke();
+  } else if (door === "W") {
+    // crescent moon over grass — the way out to the moor
+    c.fillStyle = "#b8cc8a";
+    c.beginPath(); c.arc(is * 0.3, -is * 0.25, is * 0.42, 0, 7); c.fill();
+    c.fillStyle = "#33271b";
+    c.beginPath(); c.arc(is * 0.48, -is * 0.38, is * 0.36, 0, 7); c.fill();
+    c.strokeStyle = "#8fae6a"; c.lineWidth = is * 0.13;
+    c.beginPath();
+    c.moveTo(-is * 0.55, is * 0.6); c.lineTo(-is * 0.5, is * 0.05);
+    c.moveTo(-is * 0.25, is * 0.6); c.lineTo(-is * 0.15, -is * 0.05);
+    c.moveTo(is * 0.05, is * 0.6); c.lineTo(is * 0.12, is * 0.15);
+    c.stroke();
+  } else if (door === "V") {
+    // a lit lantern — home
+    c.fillStyle = "#e0b24c"; c.fillRect(-is * 0.25, -is * 0.3, is * 0.5, is * 0.6);
+    c.strokeStyle = "#8a7a52"; c.lineWidth = is * 0.12;
+    c.strokeRect(-is * 0.34, -is * 0.4, is * 0.68, is * 0.8);
+    c.beginPath(); c.arc(0, -is * 0.4, is * 0.26, Math.PI, 0); c.stroke();
   }
   c.restore();
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   doorTexCache[door] = t;
   return t;
+}
+
+/* ---------- floating signpost labels: the sights, marked in the night ---------- */
+const SIGN_NAMES: Record<string, string> = {
+  T: "The Salted Gull", P: "Provisions", M: "Temple of the Tide",
+  O: "The Old Stair", H: "The Harbor", G: "Signal Fire", R: "Trading Post",
+  W: "To the Moor", V: "Back to Vhalis",
+};
+const labelTexCache: Record<string, {t: THREE.CanvasTexture; w: number; h: number}> = {};
+function labelSprite(text: string): THREE.Sprite {
+  let entry = labelTexCache[text];
+  if (!entry) {
+    const cv = document.createElement("canvas");
+    let c = cv.getContext("2d")!;
+    const font = "600 26px Georgia, 'Times New Roman', serif";
+    c.font = font;
+    cv.width = Math.ceil(c.measureText(text).width) + 44; cv.height = 52;
+    c = cv.getContext("2d")!; // resizing resets the context
+    const w = cv.width, r = 10;
+    c.beginPath();
+    c.moveTo(4 + r, 4); c.arcTo(w - 4, 4, w - 4, 48, r); c.arcTo(w - 4, 48, 4, 48, r);
+    c.arcTo(4, 48, 4, 4, r); c.arcTo(4, 4, w - 4, 4, r); c.closePath();
+    c.fillStyle = "rgba(10,12,18,.82)"; c.fill();
+    c.strokeStyle = "rgba(224,178,76,.65)"; c.lineWidth = 2; c.stroke();
+    c.font = font; c.fillStyle = "#e8d9b0"; c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText(text, w / 2, 27);
+    const t = new THREE.CanvasTexture(cv);
+    t.colorSpace = THREE.SRGBColorSpace;
+    entry = labelTexCache[text] = {t, w: cv.width, h: cv.height};
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: entry.t, transparent: true, depthWrite: false}));
+  const s = 0.0058;
+  sp.scale.set(entry.w * s, entry.h * s, 1);
+  return sp;
 }
 
 /* ---------- init ---------- */
@@ -251,6 +307,22 @@ const PROPS3D: Record<string, Prop3D> = {
     addFlame(p.group, pos.x, 0.06, pos.z, "rgba(255,110,40,.6)", 0.42);
     addAnchor(pos, 0xff6428, 3.5, 3.5, 0.6);
   },
+  tree(p) {
+    // a windswept moor pine, leaning off the path
+    const th = 0.5 + ((p.hash >> 2) % 5) * 0.09;
+    const tx = p.x + 0.22 + ((p.hash % 7) / 7) * 0.2, tz = p.z + 0.22 + (((p.hash >> 3) % 7) / 7) * 0.2;
+    const lean = (((p.hash >> 5) % 9) - 4) * 0.03;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.055, th, 6), woodMat);
+    trunk.position.set(tx, th / 2, tz); trunk.rotation.z = lean;
+    p.group.add(trunk);
+    const folMat = new THREE.MeshStandardMaterial({color: 0x16261a, roughness: 0.95});
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.24 + ((p.hash >> 4) % 4) * 0.03, 0.5 + th * 0.5, 7), folMat);
+    cone.position.set(tx + lean * th, th + 0.2, tz);
+    p.group.add(cone);
+    const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.3 + ((p.hash >> 6) % 4) * 0.03, 0.34, 7), folMat);
+    skirt.position.set(tx + lean * th * 0.6, th * 0.72, tz);
+    p.group.add(skirt);
+  },
 };
 
 /* ---------- level construction ---------- */
@@ -274,18 +346,22 @@ export function buildLevel(): void {
   });
   worldGroup = new THREE.Group();
   scene.add(worldGroup);
-  anchors = []; consumables = []; flameSprites = []; fireGroup = null;
+  anchors = []; consumables = []; flameSprites = []; fireGroup = null; labels = [];
   for (const mv of mobViews) { scene.remove(mv.sprite); scene.remove(mv.shadow); }
   mobViews = [];
 
   // atmosphere
   const town = biome.sky;
-  scene.fog = new THREE.FogExp2(town ? 0x0a0e1a : (biome.id === "emberdeep" ? 0x180a08 : 0x120c06), town ? 0.055 : 0.16);
-  scene.background = new THREE.Color(town ? 0x070b16 : 0x060403);
+  const isMoor = biome.id === "moor", isHarbor = biome.id === "harbor";
+  scene.fog = new THREE.FogExp2(
+    isMoor ? 0x0a120e : town ? 0x0a0e1a : (biome.id === "emberdeep" ? 0x180a08 : 0x120c06),
+    isMoor ? 0.085 : town ? 0.055 : 0.16);
+  scene.background = new THREE.Color(isMoor ? 0x05090a : town ? 0x070b16 : 0x060403);
   ambient.intensity = town ? 0.32 : 0.28;
-  ambient.color.set(town ? 0x9aa4c8 : (biome.id === "emberdeep" ? 0xcc9070 : 0xbfa888));
+  ambient.color.set(isMoor ? 0x9ab8a8 : town ? 0x9aa4c8 : (biome.id === "emberdeep" ? 0xcc9070 : 0xbfa888));
   hemi.intensity = town ? 0.5 : 0;
-  playerLight.color.set(town ? 0xb8c4e6 : 0xffc478);
+  hemi.color.set(isMoor ? 0x7a9a8a : 0x8090b8);
+  playerLight.color.set(isMoor ? 0xc3d2e6 : town ? 0xb8c4e6 : 0xffc478);
   playerLight.intensity = town ? 5 : 13;
 
   // materials from the biome bakery
@@ -295,6 +371,13 @@ export function buildLevel(): void {
     map: tex(a), normalMap: new THREE.CanvasTexture(normals[i]), roughness: 0.92,
   }));
   const wallGeo = new THREE.BoxGeometry(1, 1, 1);
+  // pitched roofs: a flattened triangular prism, ridge along X (caps close the gables)
+  const roofGeo = new THREE.CylinderGeometry(0.66, 0.66, 1.08, 3, 1, false, Math.PI / 2);
+  roofGeo.rotateZ(Math.PI / 2);
+  roofGeo.scale(1, 0.55, 1);
+  const roofMats = [0x5a3c30, 0x3c4450, 0x54452c].map(rc =>
+    new THREE.MeshStandardMaterial({color: rc, roughness: 0.92}));
+  const chimGeo = new THREE.BoxGeometry(0.13, 0.34, 0.13);
 
   // floor & ceiling
   const ftex = tex(biomeFloorTexture(biome), true);
@@ -330,24 +413,62 @@ export function buildLevel(): void {
   // walls, doors, wall props
   for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
     const ch = map[y][x];
-    const solidWall = ch === "#" || (town && TOWN_DOORS.includes(ch));
+    const isDoor = town && TOWN_DOORS.includes(ch);
+    const solidWall = ch === "#" || isDoor;
     if (!solidWall) continue;
     const h = cellHash(x, y);
+    const perimeter = x === 0 || y === 0 || x === mw - 1 || y === mh - 1;
+    // buildings rise to different heights; moor walls are rocky outcrops
+    let hgt = 1;
+    if (isHarbor) hgt = perimeter ? 1.12 : 1.02 + (h % 5) * 0.11;
+    else if (isMoor) hgt = 0.55 + (h % 7) * 0.07; // low outcrops you can see over
+    if (isDoor) hgt = Math.max(hgt, 1.05);
     const wall = new THREE.Mesh(wallGeo, wallMats[h % wallMats.length]);
-    wall.position.set(x + 0.5, 0.5, y + 0.5);
+    wall.scale.y = hgt;
+    wall.position.set(x + 0.5, hgt / 2, y + 0.5);
     worldGroup.add(wall);
-    if (town && TOWN_DOORS.includes(ch)) {
-      const face = faceToOpen(map, x, y);
-      if (face) {
+    // doors greet every open side, so gates read from both directions
+    const faces = isDoor
+      ? ([[0, 1], [0, -1], [1, 0], [-1, 0]] as [number, number][]).filter(([dx, dy]) => map[y + dy]?.[x + dx] === ".")
+      : [];
+    const roofed = isHarbor && !perimeter;
+    if (roofed) {
+      const roof = new THREE.Mesh(roofGeo, roofMats[h % roofMats.length]);
+      roof.position.set(x + 0.5, hgt + 0.18, y + 0.5);
+      const ridgeAlongZ = faces.length ? faces[0][0] !== 0 : h % 2 === 1; // door ridges parallel the facade
+      if (ridgeAlongZ) roof.rotation.y = Math.PI / 2;
+      worldGroup.add(roof);
+      if (h % 3 === 0) {
+        const chim = new THREE.Mesh(chimGeo, stoneMat);
+        chim.position.set(x + 0.5 + (ridgeAlongZ ? 0 : 0.2), hgt + 0.3, y + 0.5 + (ridgeAlongZ ? 0.2 : 0));
+        worldGroup.add(chim);
+      }
+    } else if (isMoor && h % 4 === 0) {
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3, 0), stoneMat);
+      rock.position.set(x + 0.5, hgt + 0.1, y + 0.5);
+      rock.rotation.set(h % 5, h % 7, 0); rock.scale.set(1.1, 0.65, 1.1);
+      worldGroup.add(rock);
+    }
+    if (isDoor) {
+      for (const face of faces) {
         const dt = doorTexture(ch, albedos[h % albedos.length]);
         const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.98, 0.98),
           new THREE.MeshStandardMaterial({map: dt, roughness: 0.9}));
         plane.position.set(x + 0.5 + face[0] * 0.505, 0.5, y + 0.5 + face[1] * 0.505);
         plane.lookAt(x + 0.5 + face[0] * 2, 0.5, y + 0.5 + face[1] * 2);
         worldGroup.add(plane);
-        const lpos = new THREE.Vector3(x + 0.5 + face[0] * 0.55, 0.62, y + 0.5 + face[1] * 0.55);
-        addFlame(worldGroup, lpos.x - face[1] * 0.22, lpos.y, lpos.z - face[0] * 0.22, "rgba(250,190,90,.85)", 0.2);
-        addAnchor(lpos, 0xffc06a, 3.5, 4, 0.08);
+        if (face === faces[0]) { // one door lamp is plenty, even on a two-faced gate
+          const lpos = new THREE.Vector3(x + 0.5 + face[0] * 0.55, 0.62, y + 0.5 + face[1] * 0.55);
+          addFlame(worldGroup, lpos.x - face[1] * 0.22, lpos.y, lpos.z - face[0] * 0.22, "rgba(250,190,90,.85)", 0.2);
+          addAnchor(lpos, 0xffc06a, 3.5, 4, 0.08);
+        }
+      }
+      const name = faces.length ? SIGN_NAMES[ch] : undefined;
+      if (name) { // the sight, clearly marked
+        const sp = labelSprite(name);
+        sp.position.set(x + 0.5 + faces[0][0] * 0.6, hgt + (roofed ? 0.72 : 0.4), y + 0.5 + faces[0][1] * 0.6);
+        worldGroup.add(sp);
+        labels.push({sprite: sp, pos: sp.position.clone()});
       }
     } else if (!town) {
       const face = faceToOpen(map, x, y);
@@ -376,16 +497,20 @@ export function buildLevel(): void {
     }
     buildFeature(ch, x, y, biome);
   }
-  // embers
+  // embers or fireflies
   if (biome.sparks !== "none") {
-    const n = biome.sparks === "heavy-ember" ? 60 : 34;
-    emberData = new Float32Array(n * 4); // x,y,z,speed
+    const firefly = biome.sparks === "firefly";
+    emberMode = firefly ? "drift" : "rise";
+    const n = biome.sparks === "heavy-ember" ? 60 : firefly ? 42 : 34;
+    emberData = new Float32Array(n * 4); // x,y,z, speed (rise) or phase (drift)
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) respawnEmber(i, mw, mh);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     emberPoints = new THREE.Points(geo, new THREE.PointsMaterial({
-      color: 0xff9040, size: 0.035, transparent: true, opacity: 0.85,
+      color: firefly ? 0xa8e070 : 0xff9040, size: firefly ? 0.07 : 0.035,
+      map: glowTexture(firefly ? "rgba(190,235,130,.9)" : "rgba(255,150,60,.9)"),
+      transparent: true, opacity: firefly ? 0.8 : 0.85,
       blending: THREE.AdditiveBlending, depthWrite: false,
     }));
     worldGroup.add(emberPoints);
@@ -400,9 +525,9 @@ export function buildLevel(): void {
 function respawnEmber(i: number, mw: number, mh: number): void {
   if (!emberData) return;
   emberData[i * 4] = rnd() * mw;
-  emberData[i * 4 + 1] = rnd() * 0.9;
+  emberData[i * 4 + 1] = emberMode === "drift" ? 0.12 + rnd() * 0.55 : rnd() * 0.9;
   emberData[i * 4 + 2] = rnd() * mh;
-  emberData[i * 4 + 3] = 0.12 + rnd() * 0.25;
+  emberData[i * 4 + 3] = emberMode === "drift" ? rnd() * 6.28 : 0.12 + rnd() * 0.25;
 }
 
 function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
@@ -483,6 +608,12 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
     canopy.rotation.x = -0.5; canopy.position.set(cx, 0.86, cz + 0.05);
     g.add(canopy);
   }
+  if (biome.sky && SIGN_NAMES[ch]) { // plaza sights get their name in the air too
+    const sp = labelSprite(SIGN_NAMES[ch]);
+    sp.position.set(cx, 1.18, cz);
+    g.add(sp);
+    labels.push({sprite: sp, pos: new THREE.Vector3(x + cx, 1.18, y + cz)});
+  }
   worldGroup.add(g);
 }
 
@@ -530,6 +661,11 @@ export function frame(dt: number): void {
   if (!reduceMotion) for (const f of flameSprites) {
     f.sprite.scale.setScalar(f.base * (0.85 + 0.2 * Math.sin(animT * 8 + f.phase)));
   }
+  // signposts fade out when you stand beneath them
+  for (const lb of labels) {
+    const d = lb.pos.distanceTo(camera.position);
+    lb.sprite.material.opacity = Math.min(1, Math.max(0, (d - 1.45) / 0.9));
+  }
   // consumables vanish when consumed
   for (const c of consumables) {
     c.mesh.visible = cellAt(state.level, c.cellX, c.cellY) === c.char;
@@ -570,11 +706,19 @@ export function frame(dt: number): void {
     const hue = ENEMIES[mob.key]?.hue;
     if (hue) mv.sprite.material.color.set(0xffffff);
   }
-  // rising embers
+  // rising embers / wandering fireflies
   if (emberPoints && emberData) {
     const pos = emberPoints.geometry.getAttribute("position") as THREE.BufferAttribute;
     const mw = MAPS[state.level][0].length, mh = MAPS[state.level].length;
     for (let i = 0; i < pos.count; i++) {
+      if (emberMode === "drift") {
+        const ph = emberData[i * 4 + 3];
+        pos.setXYZ(i,
+          emberData[i * 4] + Math.sin(animT * 0.55 + ph * 1.7) * 0.4,
+          emberData[i * 4 + 1] + Math.sin(animT * 0.9 + ph) * 0.1,
+          emberData[i * 4 + 2] + Math.cos(animT * 0.45 + ph * 2.3) * 0.4);
+        continue;
+      }
       emberData[i * 4 + 1] += emberData[i * 4 + 3] * dt;
       if (emberData[i * 4 + 1] > 0.95) respawnEmber(i, mw, mh);
       pos.setXYZ(i,

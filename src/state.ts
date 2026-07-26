@@ -9,8 +9,8 @@ export function setState(s: GameState): void { state = s; }
 export function newState(party: Member[]): GameState {
   return {version: 2, party, collection: [], visitors: [], visitorsDay: "",
           gold: 80, potions: 2, level: 0, x: 7, y: 5, dir: 0 as Dir,
-          mobs: {1: spawnMobs(1), 2: spawnMobs(2)},
-          opened: [], visited: {0: ["7,5"], 1: ["1,1"], 2: []}, bossDown: false, heart: false,
+          mobs: {1: spawnMobs(1), 2: spawnMobs(2), 3: spawnMobs(3)},
+          opened: [], visited: {0: ["7,5"], 1: ["1,1"], 2: [], 3: []}, bossDown: false, heart: false,
           steps: 0, kills: 0, graceLeft: ENC_GRACE, inDungeon: false};
 }
 
