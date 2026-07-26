@@ -51,10 +51,37 @@ let mobViews: MobView[] = [];
 let labels: {sprite: THREE.Sprite; pos: THREE.Vector3}[] = [];
 
 /* living ground cover: things that sway in the wind or shimmer wet */
-let swayers: {o: THREE.Object3D; base: number; amp: number; phase: number}[] = [];
+let swayers: {o: THREE.Object3D; base: number; amp: number; phase: number; wx: number; wz: number}[] = [];
 let shimmers: {m: THREE.MeshStandardMaterial; base: number; phase: number}[] = [];
-function sway(o: THREE.Object3D, amp: number): void {
-  swayers.push({o, base: o.rotation.z, amp, phase: rnd() * 6.28});
+let windK = 1; // the weather leans on the wind
+function sway(o: THREE.Object3D, amp: number, wx = 0, wz = 0): void {
+  swayers.push({o, base: o.rotation.z, amp, phase: rnd() * 6.28, wx, wz});
+}
+
+/* cloud shadows drifting over open ground */
+let cloudMesh: THREE.Mesh | null = null;
+let cloudMat: THREE.MeshBasicMaterial | null = null;
+let cloudTex: THREE.CanvasTexture | null = null;
+let cloudA = 0; // current target opacity, eased in frame
+
+/* gulls riding the harbor air */
+interface Gull { sp: THREE.Sprite; cx: number; cz: number; r: number; h: number; speed: number; phase: number; }
+let gulls: Gull[] = [];
+let gullTexA: THREE.CanvasTexture | null = null;
+let gullTexB: THREE.CanvasTexture | null = null;
+let sunK = 0; // how much sun there is right now (updateSky)
+
+function gullFrame(up: boolean): HTMLCanvasElement {
+  const cv = document.createElement("canvas"); cv.width = 48; cv.height = 28;
+  const c = cv.getContext("2d")!;
+  c.strokeStyle = "#d8dde2"; c.lineWidth = 3.4; c.lineCap = "round";
+  c.beginPath();
+  if (up) { c.moveTo(4, 8); c.quadraticCurveTo(15, 20, 24, 20); c.quadraticCurveTo(33, 20, 44, 8); }
+  else { c.moveTo(4, 20); c.quadraticCurveTo(15, 10, 24, 12); c.quadraticCurveTo(33, 10, 44, 20); }
+  c.stroke();
+  c.strokeStyle = "#8a9298"; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(21, 15); c.lineTo(27, 15); c.stroke(); // body hint
+  return cv;
 }
 
 /* drifting particles: rising embers below, wandering fireflies under the sky */
@@ -436,7 +463,7 @@ const PROPS3D: Record<string, Prop3D> = {
     }
     g2.position.set(p.x + bx, 0, p.z + bz);
     p.group.add(g2);
-    sway(g2, 0.08);
+    sway(g2, 0.08, p.x + bx, p.z + bz);
   },
   heather(p) { // moor heather: low green with purple sparks
     const g2 = new THREE.Group();
@@ -452,7 +479,7 @@ const PROPS3D: Record<string, Prop3D> = {
     }
     g2.position.set(p.x + bx, 0, p.z + bz);
     p.group.add(g2);
-    sway(g2, 0.035);
+    sway(g2, 0.035, p.x + bx, p.z + bz);
   },
   cart(p) { // a handcart left by the road
     const cx2 = p.x + 0.66, cz2 = p.z + 0.34;
@@ -484,7 +511,7 @@ const PROPS3D: Record<string, Prop3D> = {
     cloth.position.set(p.x + 0.5 + fx * 0.515, 0.6, p.z + 0.5 + fz * 0.515);
     cloth.lookAt(p.x + 0.5 + fx * 2, 0.6, p.z + 0.5 + fz * 2);
     p.group.add(cloth);
-    sway(cloth, 0.05);
+    sway(cloth, 0.05, p.x, p.z);
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 5), woodMat);
     rod.position.set(p.x + 0.5 + fx * 0.53, 0.88, p.z + 0.5 + fz * 0.53);
     if (fx !== 0) rod.rotation.x = Math.PI / 2; else rod.rotation.z = Math.PI / 2;
@@ -502,7 +529,7 @@ const PROPS3D: Record<string, Prop3D> = {
     }
     g2.position.set(p.x + 0.26, 0, p.z + 0.72);
     p.group.add(g2);
-    sway(g2, 0.1);
+    sway(g2, 0.1, p.x, p.z);
   },
   menhir(p) { // a leaning stone somebody raised long ago
     const menhirMat = new THREE.MeshStandardMaterial({color: 0x262b22, roughness: 1});
@@ -580,6 +607,7 @@ export function buildLevel(): void {
   scene.add(worldGroup);
   anchors = []; consumables = []; flameSprites = []; fireGroup = null; labels = [];
   starsMat = null; moonSpr = null; sunSpr = null; dimmables = []; swayers = []; shimmers = [];
+  cloudMesh = null; cloudMat = null; gulls = [];
   for (const mv of mobViews) { scene.remove(mv.sprite); scene.remove(mv.shadow); }
   mobViews = [];
 
@@ -651,6 +679,40 @@ export function buildLevel(): void {
     sunSpr = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTexture("rgba(255,214,140,.95)"), transparent: true, opacity: 0}));
     sunSpr.scale.setScalar(6);
     worldGroup.add(sunSpr);
+    // cloud shadows: a soft dark field sliding across the ground
+    if (!cloudTex) {
+      const cv = document.createElement("canvas"); cv.width = 256; cv.height = 256;
+      const c2 = cv.getContext("2d")!;
+      for (let k = 0; k < 9; k++) {
+        const bx = rnd() * 256, by = rnd() * 256, br = 22 + rnd() * 44;
+        for (const [ox, oy] of [[0, 0], [-256, 0], [0, -256], [-256, -256]]) {
+          const g2 = c2.createRadialGradient(bx + ox, by + oy, 2, bx + ox, by + oy, br);
+          g2.addColorStop(0, "rgba(255,255,255,.42)");
+          g2.addColorStop(1, "rgba(255,255,255,0)");
+          c2.fillStyle = g2; c2.fillRect(0, 0, 256, 256);
+        }
+      }
+      cloudTex = new THREE.CanvasTexture(cv);
+      cloudTex.wrapS = cloudTex.wrapT = THREE.RepeatWrapping;
+      cloudTex.repeat.set(2.2, 2.2);
+    }
+    cloudMat = new THREE.MeshBasicMaterial({color: 0x000000, alphaMap: cloudTex, transparent: true, opacity: 0, depthWrite: false});
+    cloudMesh = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), cloudMat);
+    cloudMesh.rotation.x = -Math.PI / 2;
+    cloudMesh.position.set(mw / 2, 0.045, mh / 2);
+    worldGroup.add(cloudMesh);
+    // gulls ride the air over harbor and cove
+    if (biome.id === "harbor" || biome.id === "cove") {
+      if (!gullTexA) { gullTexA = new THREE.CanvasTexture(gullFrame(true)); gullTexB = new THREE.CanvasTexture(gullFrame(false)); }
+      const n = biome.id === "harbor" ? 4 : 2;
+      for (let i = 0; i < n; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: gullTexA, transparent: true, opacity: 0, depthWrite: false}));
+        sp.scale.set(0.5, 0.29, 1);
+        worldGroup.add(sp);
+        gulls.push({sp, cx: mw / 2 + (rnd() - 0.5) * 4, cz: mh / 2 + (rnd() - 0.5) * 4,
+                    r: 2.5 + rnd() * 3.5, h: 3 + rnd() * 2.5, speed: 0.14 + rnd() * 0.1, phase: rnd() * 6.28});
+      }
+    }
   }
 
   // walls, doors, wall props
@@ -939,6 +1001,10 @@ function updateSky(dt: number, biome: Biome): void {
   skyBloom = 0.3 + 0.15 * plScale;
   nightK = stars;
   lampK = Math.min(1, Math.max(0, 1 - sun * 1.15));
+  sunK = sun;
+  // distinct cloud shadows need direct light; overcast weather washes them out
+  cloudA = w === "clear" ? 0.16 * sun + 0.06 * stars : w === "mist" ? 0 : 0.04;
+  windK = w === "storm" ? 2 : w === "rain" ? 1.4 : w === "mist" ? 0.7 : 1;
   // lights across the sky
   const mw = MAPS[state.level][0].length, mh = MAPS[state.level].length;
   if (starsMat) starsMat.opacity = 0.8 * stars;
@@ -1025,11 +1091,27 @@ export function frame(dt: number): void {
     waterTexTile.offset.x += dt * 0.012; waterTexTile.offset.y += dt * 0.004;
     waterTexSea.offset.x += dt * 0.003; waterTexSea.offset.y += dt * 0.001;
   }
-  // the wind moves what grows, and wet things catch the light
+  // the wind moves what grows in gusts that travel across the ground
   if (!reduceMotion) {
-    for (const sw of swayers) sw.o.rotation.z = sw.base + Math.sin(animT * 1.6 + sw.phase) * sw.amp;
+    const gust = 0.45 + 0.8 * Math.max(0, Math.sin(animT * 0.21)) * windK;
+    for (const sw of swayers) {
+      const wave = Math.sin(animT * 1.5 - sw.wx * 0.45 - sw.wz * 0.3 + sw.phase * 0.4);
+      sw.o.rotation.z = sw.base + sw.amp * wave * gust;
+    }
     for (const sh of shimmers) sh.m.emissiveIntensity = sh.base * (0.75 + 0.35 * Math.sin(animT * 2.2 + sh.phase));
     foamMat.opacity = 0.16 + 0.05 * Math.sin(animT * 1.3);
+  }
+  // cloud shadows slide with the wind
+  if (cloudMat && cloudTex) {
+    cloudMat.opacity += (cloudA - cloudMat.opacity) * (1 - Math.exp(-dt * 0.8));
+    if (!reduceMotion) { cloudTex.offset.x += dt * 0.0065 * windK; cloudTex.offset.y += dt * 0.0022 * windK; }
+  }
+  // gulls circle on the day's air, wings answering in turn
+  for (const gl of gulls) {
+    const a = animT * gl.speed + gl.phase;
+    gl.sp.position.set(gl.cx + Math.cos(a) * gl.r, gl.h + Math.sin(a * 2.3) * 0.4, gl.cz + Math.sin(a) * gl.r);
+    gl.sp.material.opacity = 0.85 * sunK;
+    gl.sp.material.map = ((animT * 4 + gl.phase) % 1) < 0.5 ? gullTexA : gullTexB;
   }
   // signposts fade out when you stand beneath them
   for (const lb of labels) {
