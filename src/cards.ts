@@ -1,5 +1,5 @@
-import type { Member, Rarity, GameState, Mob } from "./types";
-import { CLASSES, CLASS_BODY, GROUPS, MAPS, ITEMS, PACKS } from "./data";
+import type { Member, Rarity, GameState, Mob, TCard, AnyCard, CardKind } from "./types";
+import { CLASSES, CLASS_BODY, GROUPS, MAPS, ITEMS, PACKS, RELICS, EVENTS } from "./data";
 import { TRAITS, hasTrait } from "./traits";
 import { rnd, ri } from "./util";
 
@@ -103,14 +103,14 @@ export function rollVisitors(state: GameState): Member[] {
 export function todayStamp(): string { return new Date().toDateString(); }
 
 /* ============================== WORLD MOBS ============================== */
-const MOB_COUNT: Record<number, number> = {1: 6, 2: 7, 3: 7};
+const MOB_COUNT: Record<number, number> = {1: 6, 2: 7, 3: 7, 4: 4, 5: 2};
 
 /** Populate a depth with visible, roaming monster packs. */
 export function spawnMobs(level: number, existing: Mob[] = []): Mob[] {
   const map = MAPS[level];
   const mobs = [...existing];
   const taken = new Set(mobs.map(m => m.x + "," + m.y));
-  const entry = level === 3 ? [2, 1] : [1, 1];
+  const entry = level === 3 ? [2, 1] : level === 4 ? [3, 2] : [1, 1];
   let guard = 0;
   while (mobs.length < MOB_COUNT[level] && guard++ < 400) {
     const y = ri(map.length), x = ri(map[0].length);
@@ -124,11 +124,64 @@ export function spawnMobs(level: number, existing: Mob[] = []): Mob[] {
   return mobs;
 }
 
+/* ============================== TRADEABLE CARDS ============================== */
+export const isTCard = (c: AnyCard): c is TCard => {
+  const k = (c as TCard).kind;
+  return k === "relic" || k === "event";
+};
+export const tcardDef = (c: TCard) => (c.kind === "relic" ? RELICS : EVENTS)[c.key];
+export const cardName = (c: AnyCard): string => isTCard(c) ? tcardDef(c)?.n ?? "Strange Card" : c.name;
+
+export function makeTCard(kind: CardKind, key: string): TCard {
+  const def = (kind === "relic" ? RELICS : EVENTS)[key];
+  return {id: genId(), kind, key, rarity: def?.rarity ?? 0};
+}
+
+/** The peddler's sealed pack: one random relic or event card, weighted by rarity. */
+export function rollPackCard(): TCard {
+  const pool: [CardKind, string, number][] = [];
+  for (const [k, d] of Object.entries(RELICS)) pool.push(["relic", k, [50, 30, 14, 4][d.rarity]]);
+  for (const [k, d] of Object.entries(EVENTS)) pool.push(["event", k, [50, 30, 14, 4][d.rarity]]);
+  let roll = rnd() * pool.reduce((a, p) => a + p[2], 0);
+  for (const [kind, key, w] of pool) { roll -= w; if (roll <= 0) return makeTCard(kind, key); }
+  return makeTCard("relic", "gullfeather");
+}
+
+export function tcardHTML(c: TCard, extra = ""): string {
+  const def = tcardDef(c);
+  return `<div class="rcard tcard r${c.rarity}" data-card="${c.id}">
+    <span class="rname">${def?.n ?? "Strange Card"}</span>
+    <span class="rcls">${RARITY_NAMES[c.rarity]} ${c.kind === "relic" ? "Relic" : "Event"}</span>
+    <span class="rblurb">${def?.desc ?? ""}</span>
+    ${extra}
+  </div>`;
+}
+
 /* ============================== WIRE SAFETY ============================== */
 const num = (v: unknown, lo: number, hi: number, fb: number): number => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : fb;
 };
+
+/** Rebuild a tradeable card from the wire: kind and key must exist in the registry. */
+export function sanitizeTCard(raw: unknown): TCard | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  if (c.kind !== "relic" && c.kind !== "event") return null;
+  if (typeof c.key !== "string" || !(c.kind === "relic" ? RELICS : EVENTS)[c.key]) return null;
+  const def = (c.kind === "relic" ? RELICS : EVENTS)[c.key];
+  return {
+    id: typeof c.id === "string" ? c.id.slice(0, 24) : genId(),
+    kind: c.kind, key: c.key, rarity: def.rarity,
+  };
+}
+
+/** Sanitize a card of any kind coming off the wire. */
+export function sanitizeAnyCard(raw: unknown): AnyCard | null {
+  if (!raw || typeof raw !== "object") return null;
+  const k = (raw as Record<string, unknown>).kind;
+  return k === "relic" || k === "event" ? sanitizeTCard(raw) : sanitizeCard(raw);
+}
 
 /** Rebuild a card received over the co-op link from scratch — never trust the wire. */
 export function sanitizeCard(raw: unknown): Member | null {
@@ -153,6 +206,7 @@ export function sanitizeCard(raw: unknown): Member | null {
     str: num(c.str, 1, 99, body.str), con: num(c.con, 1, 99, body.con),
     ap: num(c.ap, 0, 99, 0),
     pack: num(c.pack, 0, PACKS.length - 1, 0),
+    relic: sanitizeTCard(c.relic) ?? undefined,
     items: strArr(c.items).filter(id => ITEMS[id]),
     wTier: num(c.wTier, 0, 3, 0), aTier: num(c.aTier, 0, 3, 0),
     down: c.down === true,
@@ -174,7 +228,11 @@ export function cleanupLend(s: GameState): void {
 /* ============================== SAVE MIGRATION ============================== */
 /** Upgrade a pre-card (v1) save in place: members become common cards. */
 export function migrateState(s: GameState & {version?: number}): GameState {
-  if (s.mobs) s.mobs[3] = s.mobs[3] ?? spawnMobs(3); // the moor opened after some saves were written
+  if (s.mobs) {
+    s.mobs[3] = s.mobs[3] ?? spawnMobs(3); // the moor opened after some saves were written
+    s.mobs[4] = s.mobs[4] ?? spawnMobs(4); // and later, the cove
+  }
+  s.binder = s.binder ?? [];
   s.clock = s.clock ?? 1230; // clocks and weather arrived after some saves too
   s.weather = s.weather ?? "clear";
   s.weatherLeft = s.weatherLeft ?? 70;

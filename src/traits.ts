@@ -2,6 +2,10 @@ import type { Member, TraitDef, SkillNode, SkillFlag, SpellDef } from "./types";
 import { CLASSES, WBONUS } from "./data";
 import { overloaded } from "./items";
 
+/** What the world is doing right now — set by the dungeon so relics can care. */
+export const worldCtx = {night: true, wet: false};
+const relicIs = (m: Member, k: string) => m.relic?.key === k;
+
 /* ============================== TRAITS ============================== */
 /* Rolled onto cards at creation; every trait has a real mechanical hook. */
 export const TRAITS: Record<string, TraitDef> = {
@@ -94,7 +98,8 @@ export function critOf(m: Member): number {
 }
 
 export function spdOf(m: Member): number {
-  const base = m.spd + (hasTrait(m, "torchblood") && m.hp < m.maxhp / 2 ? 2 : 0);
+  const base = m.spd + (hasTrait(m, "torchblood") && m.hp < m.maxhp / 2 ? 2 : 0)
+    + (relicIs(m, "wolfsbane") && worldCtx.night ? 2 : 0);
   return overloaded(m) ? Math.max(1, Math.round(base * 0.75)) : base; // a heavy pack drags
 }
 
@@ -116,7 +121,7 @@ export function healAmount(base: number, caster: Member, target: Member): number
 }
 
 export function spellPower(m: Member, base: number): number {
-  return Math.round(base * (hasFlag(m, "spellPower") ? 1.2 : 1));
+  return Math.round(base * (hasFlag(m, "spellPower") ? 1.2 : 1) * (relicIs(m, "emberheart") ? 1.15 : 1));
 }
 
 export function spellCost(m: Member, def: SpellDef): number {
@@ -125,7 +130,8 @@ export function spellCost(m: Member, def: SpellDef): number {
 }
 
 export function fleeBonus(m: Member): number {
-  return (hasTrait(m, "lightfoot") ? 0.10 : 0) + (hasFlag(m, "fleePlus") ? 0.15 : 0);
+  return (hasTrait(m, "lightfoot") ? 0.10 : 0) + (hasFlag(m, "fleePlus") ? 0.15 : 0)
+    + (relicIs(m, "gullfeather") ? 0.25 : 0);
 }
 
 export function goldMult(party: Member[]): number {

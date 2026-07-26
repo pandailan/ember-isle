@@ -45,6 +45,7 @@ export interface Member {
   atk: number; def: number; spd: number;
   /** Body: strength and constitution set what a card can carry. */
   str: number; con: number;
+  relic?: TCard;      // worn relic card (travels with the character when traded)
   ap: number;         // unspent attribute points (+1 per level)
   pack: number;       // backpack tier (index into PACKS)
   items: string[];    // carried item ids (ITEMS)
@@ -52,12 +53,18 @@ export interface Member {
   guard?: boolean;
 }
 
-export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; note?: string; items?: string[]; }
+export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; note?: string; items?: string[]; cards?: [CardKind, string][]; }
 
 /** A monster pack living on the map — visible in the corridor, chases the party. */
 export interface Mob { x: number; y: number; key: string; group: string[]; }
 
 export type Weather = "clear" | "mist" | "rain" | "storm";
+
+/* ============================== TRADEABLE CARDS ============================== */
+/** Beyond characters, relics and one-shot events are cards too — all trade. */
+export type CardKind = "relic" | "event";
+export interface TCard { id: string; kind: CardKind; key: string; rarity: Rarity; }
+export type AnyCard = Member | TCard;
 
 export interface GameState {
   version: number;
@@ -74,6 +81,10 @@ export interface GameState {
   inDungeon: boolean; charm?: boolean;
   /** World clock in minutes (0..1439) and the weather front passing over the isle. */
   clock: number; weather: Weather; weatherLeft: number;
+  /** The card binder: relics and event cards the expedition holds. */
+  binder: TCard[];
+  /** A vault opened by a Torn Map Page: its generated map and the way home. */
+  vault?: {map: string[]; ret: {level: number; x: number; y: number; dir: Dir}};
   /** Co-op lending bookkeeping (host side): guest-owned card ids currently in
       the party, the host cards they displaced, and gold owed to the guest. */
   coopGuestIds?: string[];

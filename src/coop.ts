@@ -10,6 +10,7 @@ import { renderView } from "./render";
 import { getLogLines, setLogLines, dlog, updateHUD } from "./dungeon";
 import { openPicker } from "./tavern";
 import { sfx, setWeatherAudio } from "./audio";
+import { isTCard } from "./cards";
 import {
   initTrade, onTradeMessage, tradeLinkLost, forceLeaveForCombat, isAtTradePost,
   openTradePost, type TradeWorld,
@@ -243,15 +244,17 @@ const hostWorld: TradeWorld = {
   addGold: n => { state.gold += n; },
   tradeables: () => {
     const excluded = new Set([...(state.coopGuestIds ?? []), ...(state.coopDisplacedIds ?? [])]);
-    return [...state.party, ...state.collection].filter(c => !excluded.has(c.id));
+    return [...state.party, ...state.collection, ...(state.binder ?? [])].filter(c => !excluded.has(c.id));
   },
   removeCard: id => {
     let i = state.party.findIndex(c => c.id === id);
     if (i >= 0) return state.party.splice(i, 1)[0];
     i = state.collection.findIndex(c => c.id === id);
-    return i >= 0 ? state.collection.splice(i, 1)[0] : null;
+    if (i >= 0) return state.collection.splice(i, 1)[0];
+    i = (state.binder ?? []).findIndex(c => c.id === id);
+    return i >= 0 ? state.binder.splice(i, 1)[0] : null;
   },
-  addCard: c => { state.collection.push(c); },
+  addCard: c => { if (isTCard(c)) state.binder.push(c); else state.collection.push(c); },
   commit: () => save(),
   notify: msg => {
     if (currentScreen === "scr-dungeon") dlog(msg);
@@ -264,16 +267,21 @@ const guestWorld: TradeWorld = {
   gold: () => ownSave?.gold ?? 0,
   addGold: n => { if (ownSave) ownSave.gold += n; },
   tradeables: () => ownSave
-    ? [...ownSave.party, ...ownSave.collection].filter(c => !lentIds.includes(c.id))
+    ? [...ownSave.party, ...ownSave.collection, ...(ownSave.binder ?? [])].filter(c => !lentIds.includes(c.id))
     : [],
   removeCard: id => {
     if (!ownSave) return null;
     let i = ownSave.party.findIndex(c => c.id === id);
     if (i >= 0) return ownSave.party.splice(i, 1)[0];
     i = ownSave.collection.findIndex(c => c.id === id);
-    return i >= 0 ? ownSave.collection.splice(i, 1)[0] : null;
+    if (i >= 0) return ownSave.collection.splice(i, 1)[0];
+    i = (ownSave.binder ?? []).findIndex(c => c.id === id);
+    return i >= 0 ? ownSave.binder.splice(i, 1)[0] : null;
   },
-  addCard: c => { ownSave?.collection.push(c); },
+  addCard: c => {
+    if (!ownSave) return;
+    if (isTCard(c)) ownSave.binder.push(c); else ownSave.collection.push(c);
+  },
   commit: () => persistOwnSave(),
   notify: msg => { if (currentScreen === "scr-town") $("town-msg").textContent = msg; },
   leave: () => {

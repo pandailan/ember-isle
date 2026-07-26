@@ -1,9 +1,9 @@
-import type { Member } from "./types";
+import type { AnyCard } from "./types";
 import type { NetMsg } from "./net";
 import { net } from "./net";
 import { show, currentScreen } from "./ui";
 import { $ } from "./util";
-import { cardHTML, sanitizeCard, RARITY_NAMES } from "./cards";
+import { cardHTML, tcardHTML, isTCard, cardName, sanitizeAnyCard, RARITY_NAMES } from "./cards";
 import { paintFaces } from "./portraits";
 import { sfx } from "./audio";
 
@@ -15,26 +15,30 @@ import { sfx } from "./audio";
 export interface TradeWorld {
   gold(): number;
   addGold(n: number): void;
-  tradeables(): Member[];
-  removeCard(id: string): Member | null;
-  addCard(c: Member): void;
+  tradeables(): AnyCard[];
+  removeCard(id: string): AnyCard | null;
+  addCard(c: AnyCard): void;
   commit(): void;
   notify(msg: string): void;
   leave(): void;
 }
+
+const anyHTML = (c: AnyCard): string => isTCard(c) ? tcardHTML(c) : cardHTML(c);
+const describe = (c: AnyCard): string =>
+  `${RARITY_NAMES[c.rarity]} ${isTCard(c) ? (c.kind === "relic" ? "relic" : "event card") : c.cls}`;
 
 let getWorld: (() => TradeWorld) | null = null;
 export function initTrade(fn: () => TradeWorld): void { getWorld = fn; }
 
 let atPost = false;
 let partnerAtPost = false;
-let partnerCards: Member[] = [];
+let partnerCards: AnyCard[] = [];
 let myPick: string | null = null;
 let theirPick: string | null = null;
 let offerGold = 0;
-let incoming: {give: Member; gold: number; want: string} | null = null;
-let outgoing: {give: Member; gold: number; want: string} | null = null;
-let awaitingCommit: Member | null = null; // the card we promised while waiting for commit
+let incoming: {give: AnyCard; gold: number; want: string} | null = null;
+let outgoing: {give: AnyCard; gold: number; want: string} | null = null;
+let awaitingCommit: AnyCard | null = null; // the card we promised while waiting for commit
 
 function status(msg: string): void { if (atPost) $("trade-status").textContent = msg; }
 
@@ -78,8 +82,8 @@ function render(): void {
     const wanted = mine.find(c => c.id === incoming!.want);
     inc.innerHTML = `<div class="tradeoffer">
       <h3>They offer:</h3>
-      <div class="roster">${cardHTML(incoming.give)}${wanted ? cardHTML(wanted) : `<p class="dim">…for a card you no longer hold.</p>`}</div>
-      <p class="dim" style="font-size:.84rem;">${RARITY_NAMES[incoming.give.rarity]} ${incoming.give.cls} “${incoming.give.name}”${incoming.gold ? ` plus ${incoming.gold} gold` : ""} — in exchange for ${wanted ? `your “${wanted.name}”` : "a card you traded away"}.</p>
+      <div class="roster">${anyHTML(incoming.give)}${wanted ? anyHTML(wanted) : `<p class="dim">…for a card you no longer hold.</p>`}</div>
+      <p class="dim" style="font-size:.84rem;">${describe(incoming.give)} “${cardName(incoming.give)}”${incoming.gold ? ` plus ${incoming.gold} gold` : ""} — in exchange for ${wanted ? `your “${cardName(wanted)}”` : "a card you traded away"}.</p>
       <div class="btnrow">
         <button id="bt-trade-accept" class="primary" ${wanted && !awaitingCommit ? "" : "disabled"}>Shake On It</button>
         <button id="bt-trade-decline">Decline</button>
@@ -102,7 +106,7 @@ function render(): void {
   } else if (!partnerCards.length) {
     theirs.innerHTML = `<p class="dim" style="font-size:.85rem;">They carry nothing they can part with.</p>`;
   } else {
-    theirs.innerHTML = partnerCards.map(c => cardHTML(c)).join("");
+    theirs.innerHTML = partnerCards.map(c => anyHTML(c)).join("");
     paintFaces(theirs);
     theirs.querySelectorAll<HTMLElement>(".rcard").forEach(el => {
       el.classList.toggle("sel", el.dataset.card === theirPick);
@@ -112,7 +116,7 @@ function render(): void {
 
   // my grid
   const mineEl = $("trade-mine");
-  mineEl.innerHTML = mine.length ? mine.map(c => cardHTML(c)).join("")
+  mineEl.innerHTML = mine.length ? mine.map(c => anyHTML(c)).join("")
     : `<p class="dim" style="font-size:.85rem;">You carry nothing you can part with.</p>`;
   paintFaces(mineEl);
   mineEl.querySelectorAll<HTMLElement>(".rcard").forEach(el => {
@@ -133,7 +137,7 @@ function proposeOffer(): void {
   outgoing = {give, gold: offerGold, want: theirPick};
   net.send({t: "trade_offer", give: give as unknown as Record<string, unknown>, gold: offerGold, want: theirPick});
   sfx("spell");
-  status(`Offer sent: “${give.name}”${offerGold ? ` + ${offerGold} g` : ""}. Waiting on their handshake…`);
+  status(`Offer sent: “${cardName(give)}”${offerGold ? ` + ${offerGold} g` : ""}. Waiting on their handshake…`);
   render();
 }
 
@@ -156,7 +160,7 @@ export function onTradeMessage(m: NetMsg): boolean {
     case "trade_open": {
       partnerAtPost = true;
       partnerCards = (Array.isArray(m.cards) ? m.cards : [])
-        .map(sanitizeCard).filter((c): c is Member => !!c).slice(0, 60);
+        .map(sanitizeAnyCard).filter((c): c is AnyCard => !!c).slice(0, 60);
       if (atPost) render();
       else world.notify("Your companion is waiting at the Trading Post.");
       break;
@@ -168,7 +172,7 @@ export function onTradeMessage(m: NetMsg): boolean {
       break;
     }
     case "trade_offer": {
-      const give = sanitizeCard(m.give);
+      const give = sanitizeAnyCard(m.give);
       if (!give) break;
       const gold = Math.max(0, Math.min(100000, Number(m.gold) || 0));
       incoming = {give, gold, want: typeof m.want === "string" ? m.want : ""};
@@ -184,7 +188,7 @@ export function onTradeMessage(m: NetMsg): boolean {
     }
     case "trade_accept": {
       if (!outgoing) break;
-      const theirCard = sanitizeCard(m.give);
+      const theirCard = sanitizeAnyCard(m.give);
       const stillMine = world.tradeables().some(c => c.id === outgoing!.give.id);
       if (!theirCard || !stillMine || world.gold() < outgoing.gold) {
         net.send({t: "trade_cancel"});
@@ -199,8 +203,8 @@ export function onTradeMessage(m: NetMsg): boolean {
       net.send({t: "trade_commit"});
       outgoing = null; offerGold = 0; myPick = null; theirPick = null;
       sfx("recruit");
-      if (atPost) { status(`Done! “${theirCard.name}” is yours now.`); sendList(); render(); }
-      else world.notify(`Trade complete — “${theirCard.name}” joins your collection.`);
+      if (atPost) { status(`Done! “${cardName(theirCard)}” is yours now.`); sendList(); render(); }
+      else world.notify(`Trade complete — “${cardName(theirCard)}” joins your collection.`);
       break;
     }
     case "trade_commit": {
@@ -209,7 +213,7 @@ export function onTradeMessage(m: NetMsg): boolean {
       world.addCard(incoming.give);
       world.addGold(incoming.gold);
       world.commit();
-      const got = incoming.give.name;
+      const got = cardName(incoming.give);
       awaitingCommit = null; incoming = null;
       sfx("recruit");
       if (atPost) { status(`Done! “${got}” is yours now.`); sendList(); render(); }

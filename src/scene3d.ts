@@ -527,7 +527,7 @@ export function buildLevel(): void {
 
   // atmosphere
   const town = biome.sky;
-  const isMoor = biome.id === "moor", isHarbor = biome.id === "harbor";
+  const isMoor = biome.id === "moor", isHarbor = biome.id === "harbor", isCove = biome.id === "cove";
   scene.fog = new THREE.FogExp2(
     isMoor ? 0x0a120e : town ? 0x0a0e1a : (biome.id === "emberdeep" ? 0x180a08 : 0x120c06),
     isMoor ? 0.085 : town ? 0.055 : 0.16);
@@ -562,7 +562,7 @@ export function buildLevel(): void {
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(mw / 2, 0, mh / 2);
   worldGroup.add(floor);
-  if (isMoor) { // the isle sits in open sea; it runs to the horizon under the fog
+  if (isMoor || isCove) { // open sea runs to the horizon under the fog
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), getWaterMats()[1]);
     sea.rotation.x = -Math.PI / 2;
     sea.position.set(mw / 2, -0.05, mh / 2);
@@ -603,14 +603,14 @@ export function buildLevel(): void {
     if (!solidWall) continue;
     const h = cellHash(x, y);
     const perimeter = x === 0 || y === 0 || x === mw - 1 || y === mh - 1;
-    if (isMoor && !isDoor && !perimeter) { // the open moor builds no masonry
+    if ((isMoor || isCove) && !isDoor && !perimeter) { // the open wilds build no masonry
       buildWilds(x, y, h);
       continue;
     }
     // buildings rise to different heights; the moor keeps only the town's seaward wall
     let hgt = 1;
     if (isHarbor) hgt = perimeter ? 1.12 : 1.02 + (h % 5) * 0.11;
-    else if (isMoor) hgt = 1.12;
+    else if (isMoor || isCove) hgt = 1.12;
     if (isDoor) hgt = Math.max(hgt, 1.05);
     const wall = new THREE.Mesh(wallGeo, wallMats[h % wallMats.length]);
     wall.scale.y = hgt;
@@ -804,6 +804,16 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
       foam.position.set(cx + dx * 0.455, 0.028, cz + dy * 0.455);
       g.add(foam);
     }
+  }
+  if (ch === "X") { // the folded door out of a vault: an arch of pale light
+    for (const dx of [-0.26, 0.26]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.92, 0.1), stoneMat);
+      post.position.set(cx + dx, 0.46, cz); g.add(post);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.1, 0.12), stoneMat);
+    lintel.position.set(cx, 0.94, cz); g.add(lintel);
+    addFlame(g, cx, 0.5, cz, "rgba(200,176,224,.55)", 0.55);
+    addAnchor(new THREE.Vector3(x + cx, 0.55, y + cz), 0xc8b0e0, 4, 4.5, 0.15);
   }
   if (biome.sky && SIGN_NAMES[ch]) { // plaza sights get their name in the air too
     const sp = labelSprite(SIGN_NAMES[ch]);

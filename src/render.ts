@@ -47,7 +47,7 @@ function glFallback(msg: string): void {
     The 3D view itself re-renders continuously from state. */
 export function renderView(): void {
   const wname = WEATHER_NAMES[state.weather] ? " · " + WEATHER_NAMES[state.weather] : "";
-  $("pos-label").textContent = (state.level === 0 || state.level === 3)
+  $("pos-label").textContent = (state.level === 0 || state.level === 3 || state.level === 4)
     ? `${LEVEL_NAMES[state.level]} · ${phaseName(state.clock)}${wname}`
     : LEVEL_NAMES[state.level];
   $("dir-label").textContent = DIRN[state.dir];
@@ -63,7 +63,7 @@ export function renderAutomap(): void {
   const FEAT_HUE: Record<string, string> =
     {C: "#e0b24c", S: "#e8d9b0", U: "#e8d9b0", F: "#7fa8bd", B: "#c8502f", E: "#8fae6a",
      T: "#e0b24c", P: "#c8502f", M: "#7fa8bd", O: "#b8b0a0", H: "#8fae6a", G: "#e09a3c", R: "#b8a888",
-     W: "#8fae6a", V: "#8fae6a"};
+     W: "#8fae6a", V: "#8fae6a", X: "#c8b0e0"};
   for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
     if (!vis.has(x + "," + y)) continue;
     const c = cellAt(state.level, x, y);

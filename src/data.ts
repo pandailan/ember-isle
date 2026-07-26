@@ -1,4 +1,4 @@
-import type { ClassDef, SpellDef, EnemyDef, ChestLoot } from "./types";
+import type { ClassDef, SpellDef, EnemyDef, ChestLoot, Rarity } from "./types";
 
 export const CLASSES: Record<string, ClassDef> = {
   Knight:  {hp:34, mp:0,  atk:9, def:7, spd:5, g:{hp:7,mp:0,atk:2,def:2,spd:1}, spells:[]},
@@ -25,6 +25,20 @@ export const ITEMS: Record<string, ItemDef> = {
   relic:     {n: "Barrow Relic",   w: 2, size: 1, sell: 45, desc: "Older than the town. Maybe the isle."},
   shard:     {n: "Ember Shard",    w: 1, size: 1, sell: 30, desc: "A splinter of the fire below."},
 };
+/* ============================== RELIC & EVENT CARDS ============================== */
+export interface TCardDef { n: string; desc: string; rarity: Rarity; }
+export const RELICS: Record<string, TCardDef> = {
+  gullfeather: {n: "Gull-Feather Token",  desc: "Escapes come much easier", rarity: 0},
+  wolfsbane:   {n: "Wolfsbane Charm",     desc: "+2 SPD while night holds", rarity: 1},
+  stormglass:  {n: "Stormglass Amulet",   desc: "+2 DEF in rain and storm", rarity: 1},
+  emberheart:  {n: "Emberheart Pendant",  desc: "Spells strike 15% harder", rarity: 2},
+};
+export const EVENTS: Record<string, TCardDef> = {
+  charter: {n: "Smuggler's Charter", desc: "Sail from Vhalis to the Hidden Cove — burns on use", rarity: 2},
+  mappage: {n: "Torn Map Page",      desc: "Unfold below ground: a hidden vault opens — burns on use", rarity: 2},
+  rite:    {n: "Rite of Return",     desc: "Raise a fallen card, anywhere, free — burns on use", rarity: 3},
+};
+
 export interface PackDef { n: string; slots: number; mult: number; price: number; }
 /** Backpacks: more room, and a frame that carries the load better. */
 export const PACKS: PackDef[] = [
@@ -64,6 +78,8 @@ export const GROUPS: Record<number, string[][]> = {
   1:[["rat","rat"],["rat","rat","rat"],["sli","sli"],["gob"],["gob","rat"],["gob","gob"],["ske"],["ske","rat","rat"],["sli","gob"]],
   2:[["orc"],["orc","gob","gob"],["wra"],["cul","ske"],["orc","orc"],["gol"],["cul","wra"],["ske","ske","ske"],["gol","cul"]],
   3:[["wlf"],["wlf","wlf"],["wlf","wlf","wlf"],["gob","rat"],["rat","rat","rat"],["sli","sli"],["wlf","gob"]],
+  4:[["orc"],["orc","gob"],["ske","ske"],["orc","ske"]],
+  5:[["ske","ske"],["wra"],["ske","wra"]],
 };
 
 /** Town cells that stop you and open something when you walk into them. */
@@ -92,6 +108,15 @@ export const MAPS: Record<number, string[]> = {
      "#..##........#..~",
      "#......#........~",
      "#~~~~~~~~~~~~~~~~"],
+  4:["~~~~~~~~~~~~~",
+     "~.....#.....~",
+     "~.V.......C.~",
+     "~....#......~",
+     "~..#....#...~",
+     "~......#..C.~",
+     "~~..#......~~",
+     "~~~....#..~~~",
+     "~~~~~~~~~~~~~"],
   1:["###############",
      "#E....#...#..C#",
      "#.###.#.#.#.#.#",
@@ -122,6 +147,8 @@ export const MAPS: Record<number, string[]> = {
 export const LEVEL_NAMES: Record<number, string> = {
   0:"Vhalis Harbor",
   3:"The Moor of Vhalis",
+  4:"The Hidden Cove",
+  5:"The Forgotten Vault",
   1:"The Ember Caves · Depth I",
   2:"The Ember Deep · Depth II",
 };
@@ -131,7 +158,9 @@ export const CHESTS: Record<string, ChestLoot> = {
   "3:2,6": {gold:70, potions:1, note:"a barrow-stone cache", items:["relic"]},
   "1:13,1":{gold:60, potions:1, note:"a smuggler's cache", items:["shard"]},
   "1:1,9": {gold:45, potions:1, note:"a rotted strongbox"},
-  "2:13,1":{gold:150,potions:2, note:"a cultist's tithe chest"},
+  "2:13,1":{gold:150,potions:2, note:"a cultist's tithe chest", cards:[["event","charter"]]},
+  "4:10,2":{gold:90, potions:1, note:"a smuggler's strongbox", cards:[["relic","emberheart"]]},
+  "4:10,5":{gold:60, potions:2, note:"a tide-buried sea chest", cards:[["event","mappage"]]},
   "2:3,6": {gold:40, charm:true, note:"a warded reliquary"},
   "2:4,12":{gold:120,potions:1, note:"an orcish war-chest"},
 };

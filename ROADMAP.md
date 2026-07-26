@@ -62,12 +62,27 @@
   music theme, gulls over the harbor by day, and wolf howls across the moor at
   night round out the soundscape.
 
+- **The card economy** — everything tradeable is a card now. Relic cards are
+  worn by characters (Wolfsbane, Stormglass, Emberheart, Gull-Feather — real
+  combat hooks tied to night, weather, and spellcraft) and travel with them
+  when traded. Event cards burn on play: the Rite of Return raises the fallen,
+  the Smuggler's Charter sails the party to the Hidden Cove (a new open-sea
+  level with rich chests and orc packs), and the Torn Map Page unfolds a
+  procedurally carved vault below ground — same page, same vault, with a pale
+  door back out. Cards come from chests, the boss, and the tavern peddler's
+  sealed packs; the binder UI works from the tavern and the walking view; the
+  Trading Post now trades any card kind over the same handshake.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
-  as the source of truth for card ownership, plus shared leaderboard and a
-  graveyard (fallen parties appear in other players' dungeons).
-- More depths, quests, and a second boss; hardcore mode (cards can truly die).
+  as the source of truth for card ownership — serial-minted event cards give
+  rare cards real scarcity — plus shared leaderboard and a graveyard (fallen
+  parties appear in other players' dungeons).
+- **Contract cards** (tradeable bounties) and **descend-with-a-deck** (floors
+  below the Ember Deep assembled from carried map cards).
+- More depths, quests, and a second boss; hardcore mode (cards can truly die —
+  and the Rite of Return becomes the most precious card on the isle).
 
 ## Art, 3D, sound & music strategy
 

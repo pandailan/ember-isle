@@ -3,7 +3,9 @@ import { state, save, cellAt, markVisited, allCards, mobAt, isSaveEnabled } from
 import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
-import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID, ITEMS } from "./data";
+import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID, ITEMS, RELICS, EVENTS } from "./data";
+import { vaultLoot, leaveVault, openBinder } from "./binder";
+import { makeTCard } from "./cards";
 import { findCarrier } from "./items";
 import { potionHeal } from "./traits";
 import { spawnMobs } from "./cards";
@@ -15,13 +17,13 @@ import type { Weather } from "./types";
 
 const dungeonScene = () =>
   state.level === 0 ? "town" as const
-  : state.level === 3 ? "moor" as const
-  : state.level >= 2 ? "deep" as const : "dungeon" as const;
+  : state.level === 3 || state.level === 4 ? "moor" as const
+  : state.level === 2 ? "deep" as const : "dungeon" as const;
 
 let logLines: string[] = [];
 let engagedMob: Mob | null = null;
 
-const outdoors = () => state.level === 0 || state.level === 3;
+const outdoors = () => state.level === 0 || state.level === 3 || state.level === 4;
 
 /** Time passes with motion: the sky, the weather, and the log all follow. */
 export function advanceTime(mins: number, weatherTicks = 1): void {
@@ -157,10 +159,11 @@ export function step(back: boolean, byGuest = false): void {
   if (cell === "#") {
     sfx("bump");
     dlog(state.level === 0 ? "A shuttered wall. The town sleeps."
-      : state.level === 3 ? "A thicket of thorn and stone. No way through." : "Stone. You are not the first to test it.");
+      : state.level === 3 ? "A thicket of thorn and stone. No way through."
+      : state.level === 4 ? "Salt-worn rock. The cove keeps its secrets." : "Stone. You are not the first to test it.");
     renderView(); return;
   }
-  if ((state.level === 0 || state.level === 3) && TOWN_SOLID.includes(cell)) {
+  if ((state.level === 0 || state.level === 3 || state.level === 4) && TOWN_SOLID.includes(cell)) {
     if (byGuest) { dlog("Your host must be the one to knock."); return; }
     sfx("tap");
     app.townDoor(cell);
@@ -192,11 +195,15 @@ export function combatFled(): void { engagedMob = null; }
 async function onEnterCell(raw: string): Promise<void> {
   const key = state.level + ":" + state.x + "," + state.y;
   if (raw === "C" && !state.opened.includes(key)) {
-    const loot = CHESTS[key] || {gold: 30};
+    const loot = state.level === 5 ? vaultLoot() : (CHESTS[key] || {gold: 30});
     state.opened.push(key);
     const got: string[] = [];
     if (loot.gold) { state.gold += loot.gold; got.push(loot.gold + " gold"); }
     if (loot.potions) { state.potions += loot.potions; got.push(loot.potions + " potion" + (loot.potions > 1 ? "s" : "")); }
+    for (const [kind, ckey] of loot.cards ?? []) {
+      state.binder.push(makeTCard(kind, ckey));
+      got.push(`a sealed card: ${kind === "relic" ? RELICS[ckey]?.n : EVENTS[ckey]?.n}`);
+    }
     const left: string[] = [];
     for (const id of loot.items ?? []) {
       const carrier = findCarrier(state.party, id);
@@ -224,6 +231,10 @@ async function onEnterCell(raw: string): Promise<void> {
     state.level = 1; state.x = 13; state.y = 9; state.dir = 3; state.graceLeft = ENC_GRACE;
     markVisited(); sfx("stairs"); setScene(dungeonScene());
     dlog("You climb back toward cooler air."); save(); renderView(); return;
+  }
+  if (raw === "X") { // the folded door out of a map-page vault
+    leaveVault();
+    return;
   }
   if (raw === "E") {
     dlog("Daylight."); await sleep(300);
@@ -275,6 +286,7 @@ export function bindDungeonControls(): void {
   $("bt-fwd").onclick = () => doStep(false);
   $("bt-back").onclick = () => doStep(true);
   $("bt-map").onclick = () => { amap.classList.toggle("on"); renderView(); };
+  $("bt-cards").onclick = () => { sfx("tap"); openBinder(); };
   $("bt-potion").onclick = () => {
     if (net.role === "guest") net.send({t: "input", a: "potion"});
     else usePotionField();

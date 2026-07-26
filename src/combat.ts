@@ -1,6 +1,7 @@
 import type { Member, EnemyInst, CombatState, PlayerCmd } from "./types";
 import { CLASSES, SPELLS, ENEMIES, ENC_GRACE, ITEMS } from "./data";
 import { findCarrier } from "./items";
+import { grantBossCard } from "./binder";
 import { state, save, alive, defOf, xpNeed } from "./state";
 import {
   atkOf, critOf, spdOf, mitigate, healAmount, spellPower, spellCost,
@@ -397,6 +398,8 @@ async function combatVictory(): Promise<void> {
   if (combat.isBoss) {
     state.bossDown = true; state.heart = true;
     clog("Vhal's crown gutters out. In the ash lies the HEART OF EMBER, already cooling.");
+    grantBossCard();
+    clog("Beneath it, unburnt: a sealed card — a RITE OF RETURN.");
     await sleep(1400);
     cmdMenu("", [{t: "Take the Heart and go on", v: 1, wide: true}]);
     await awaitChoice();

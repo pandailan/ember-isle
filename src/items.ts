@@ -12,7 +12,7 @@ export const armorW = (m: Member): number => 3 + m.aTier * 2;
 export const carryMax = (m: Member): number =>
   Math.round((10 + m.str * 3 + m.con * 2) * PACKS[m.pack].mult);
 export const carryW = (m: Member): number =>
-  weaponW(m) + armorW(m) + m.items.reduce((a, id) => a + (ITEMS[id]?.w ?? 0), 0);
+  weaponW(m) + armorW(m) + (m.relic ? 1 : 0) + m.items.reduce((a, id) => a + (ITEMS[id]?.w ?? 0), 0);
 export const packUsed = (m: Member): number =>
   m.items.reduce((a, id) => a + (ITEMS[id]?.size ?? 0), 0);
 export const packFree = (m: Member): number => PACKS[m.pack].slots - packUsed(m);

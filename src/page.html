@@ -183,6 +183,11 @@
   .islot .idrop{min-height:20px; padding:0 6px; font-size:.66rem; margin-top:2px; align-self:flex-start;}
   .wbar{height:8px; border:1px solid var(--line); border-radius:4px; overflow:hidden; background:#140e08;}
   .wbar i{display:block; height:100%; background:#8fae6a;}
+  /* tradeable (relic/event) cards: no face, kind line, action button */
+  .rcard.tcard{padding-right:12px; background:linear-gradient(160deg, var(--panel), #191007);}
+  .rcard.tcard .tplay{min-height:34px; padding:5px 10px; font-size:.82rem; margin-top:5px; align-self:flex-start;}
+  .rcard.tcard .btnrow{display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;}
+  .rcard.tcard .pickt{min-height:30px; padding:3px 9px; font-size:.78rem;}
   .plaque.tgt{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber) inset; cursor:pointer;}
 
   .dpad{display:grid; grid-template-columns:repeat(5,1fr); gap:8px;}
@@ -263,6 +268,8 @@
     <div class="roster" id="visitors"></div>
     <div class="btnrow">
       <button id="bt-tav-rest">Rest the Company · 12 g</button>
+      <button id="bt-tav-pack">Peddler's Pack · 40 g</button>
+      <button id="bt-tav-binder">Card Binder</button>
       <button id="bt-tav-back" class="primary">Back to the Harbor</button>
     </div>
     <p class="dim" id="tav-msg" style="font-size:.85rem; min-height:1.3em;"></p>
@@ -340,6 +347,7 @@
       <button id="bt-left" aria-label="Turn left">⟲</button>
       <button id="bt-fwd" aria-label="Step forward">▲</button>
       <button id="bt-right" aria-label="Turn right">⟳</button>
+      <button class="small" id="bt-cards">Cards</button>
       <button class="small" id="bt-potion">Potion</button>
       <button class="small" id="bt-save">Save</button>
       <span></span>

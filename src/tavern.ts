@@ -8,6 +8,8 @@ import { TRAITS, SKILL_TREES, buySkill, spellsOf } from "./traits";
 import { SPELLS, ITEMS, PACKS, WNAME, WBONUS, ANAME, ABONUS } from "./data";
 import { carryMax, carryW, weaponW, armorW, packUsed, overloaded } from "./items";
 import { drawPortraitTo, paintFaces } from "./portraits";
+import { openBinder, unequipRelic, buyPack } from "./binder";
+import { tcardDef } from "./cards";
 import { net } from "./net";
 import { sfx } from "./audio";
 
@@ -106,6 +108,14 @@ export function openTavern(msg?: string): void {
     });
   }
 
+  ($("bt-tav-pack") as HTMLButtonElement).disabled = state.gold < 40 || net.role === "guest";
+  $("bt-tav-pack").onclick = () => {
+    const card = buyPack();
+    if (!card) return;
+    sfx("chest");
+    openTavern(`The peddler slides a sealed card across the table — ${tcardDef(card)?.n}. "No refunds."`);
+  };
+  $("bt-tav-binder").onclick = () => { sfx("tap"); openBinder(); };
   ($("bt-tav-rest") as HTMLButtonElement).disabled = state.gold < 12;
   $("bt-tav-rest").onclick = () => {
     if (state.gold < 12) return;
@@ -192,13 +202,17 @@ export function openCard(id: string, atTavern = true): void {
       <div class="trow"><b>Weapon</b><span class="dim">${WNAME[m.wTier]} · ATK +${WBONUS[m.wTier]} · ${weaponW(m)} wt</span></div>
       <div class="trow"><b>Armor</b><span class="dim">${ANAME[m.aTier]} · DEF +${ABONUS[m.aTier]} · ${armorW(m)} wt</span></div>
       <div class="trow"><b>Pack</b><span class="dim">${pk.n} · ${pk.slots} slots · carries ×${pk.mult} (better packs at Provisions)</span></div>
+      <div class="trow"><b>Relic</b><span class="dim">${m.relic ? `${tcardDef(m.relic)?.n} — ${tcardDef(m.relic)?.desc} · 1 wt` : "none worn"}</span>${
+        m.relic && canEdit ? `<button class="idrop" id="bt-unrelic">Remove</button>` : ""}</div>
     </div>
     <div class="packgrid">${itemCells}${empties}</div>
     <div class="wbar"><i style="width:${Math.min(100, w / wmax * 100)}%;${w > wmax ? "background:var(--ember)" : ""}"></i></div>
     <p class="dim" style="font-size:.78rem;">Load ${w} / ${wmax} wt${overloaded(m) ? " — overloaded: slower in battle. Sell or drop something." : ""}</p>
     <div class="traitbox">${traits}</div>
     <div class="skilltree">${treeHTML}</div>`;
-  $("card-body").querySelectorAll<HTMLButtonElement>(".idrop").forEach(b => {
+  const unrelic = $("card-body").querySelector<HTMLButtonElement>("#bt-unrelic");
+  if (unrelic) unrelic.onclick = () => { unequipRelic(m); openCard(m.id, atTavern); };
+  $("card-body").querySelectorAll<HTMLButtonElement>(".idrop:not(#bt-unrelic)").forEach(b => {
     b.onclick = () => {
       const dropped = m.items.splice(Number(b.dataset.i), 1)[0];
       save(); sfx("tap");

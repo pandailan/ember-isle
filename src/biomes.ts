@@ -137,11 +137,34 @@ export const BIOMES: Record<string, Biome> = {
       {id: "puddle", mod: 7, rem: 3},
     ],
   },
+  cove: {
+    id: "cove",
+    sky: true,
+    ceiling: {top: "#070b16", bottom: "#1a1712"},
+    floor: {top: "#181410", bottom: "#332c1e"},
+    ambientTop: "rgb(186,192,204)",
+    ambientHorizon: "rgb(126,126,118)",
+    ambientBottom: "rgb(112,106,92)",
+    playerLight: {color: "rgba(205,212,230,.28)", radius: 360},
+    sparks: "firefly",
+    beams: false,
+    tex: {style: "stone", base: [104, 94, 70], mortar: "#241c10",
+          blockW: [44, 80], blockH: [32, 56], crackDensity: 3, variants: 4},
+    wallProps: [],
+    floorProps: [
+      {id: "crate", mod: 9, rem: 2, offPath: true},
+      {id: "reeds", mod: 5, rem: 1},
+      {id: "log", mod: 9, rem: 4, offPath: true},
+      {id: "rubble", mod: 6, rem: 3},
+      {id: "puddle", mod: 7, rem: 0},
+    ],
+  },
 };
 
 export function biomeFor(level: number): Biome {
   if (level === 0) return BIOMES.harbor;
   if (level === 3) return BIOMES.moor;
+  if (level === 4) return BIOMES.cove;
   if (level === 2) return BIOMES.emberdeep;
   return BIOMES.caves;
 }
@@ -285,6 +308,7 @@ export function biomeFloorTexture(biome: Biome): HTMLCanvasElement {
     const spec: WallTexSpec = {...biome.tex, style: "stone",
       base: biome.id === "harbor" ? [64, 66, 76]
         : biome.id === "moor" ? [46, 58, 38]
+        : biome.id === "cove" ? [96, 84, 58]
         : biome.tex.base.map(v => Math.round(v * 0.72)) as [number, number, number],
       blockW: [24, 44], blockH: [24, 44], crackDensity: biome.tex.crackDensity + 1, variants: 1,
       mossColor: undefined, veinColor: biome.tex.veinColor};
