@@ -8,7 +8,9 @@ import { potionHeal } from "./traits";
 import { spawnMobs } from "./cards";
 import { view, amap, renderView } from "./render";
 import { net } from "./net";
-import { setScene, sfx } from "./audio";
+import { setScene, setWeatherAudio, sfx } from "./audio";
+import { phaseName, WEATHER_MSGS, PHASE_MSGS } from "./daytime";
+import type { Weather } from "./types";
 
 const dungeonScene = () =>
   state.level === 0 || state.level === 3 ? "town" as const
@@ -16,6 +18,30 @@ const dungeonScene = () =>
 
 let logLines: string[] = [];
 let engagedMob: Mob | null = null;
+
+const outdoors = () => state.level === 0 || state.level === 3;
+
+/** Time passes with motion: the sky, the weather, and the log all follow. */
+export function advanceTime(mins: number, weatherTicks = 1): void {
+  const prevPhase = phaseName(state.clock);
+  state.clock = (state.clock + mins) % 1440;
+  const phase = phaseName(state.clock);
+  if (phase !== prevPhase && outdoors() && PHASE_MSGS[phase]) dlog(PHASE_MSGS[phase]);
+  state.weatherLeft -= weatherTicks;
+  if (state.weatherLeft <= 0) rollWeather();
+}
+
+function rollWeather(): void {
+  const prev = state.weather;
+  const r = rnd() * 100;
+  state.weather = r < 45 ? "clear" : r < 70 ? "mist" : r < 92 ? "rain" : "storm";
+  state.weatherLeft = 45 + ri(50);
+  if (state.weather !== prev && outdoors()) dlog(WEATHER_MSGS[state.weather]);
+  setWeatherAudio(state.weather, outdoors());
+}
+
+/** Re-assert the weather soundscape when the walking view (re)opens. */
+export function syncWeatherAudio(): void { setWeatherAudio(state.weather as Weather, outdoors()); }
 
 export function getLogLines(): string[] { return logLines; }
 export function setLogLines(l: string[]): void { logLines = l; redrawLog(); }
@@ -43,6 +69,7 @@ export function enterDungeon(fresh: boolean): void {
   }
   state.inDungeon = true;
   setScene(dungeonScene());
+  syncWeatherAudio();
   if (fresh) {
     state.level = 1; state.x = 1; state.y = 1; state.dir = 1; state.graceLeft = ENC_GRACE;
     // the caves refill while you're topside
@@ -63,6 +90,7 @@ export function enterDungeon(fresh: boolean): void {
 /** Show the walking view without changing where we are (town streets use this). */
 export function enterWalk(msg: string | null): void {
   markVisited(); save();
+  syncWeatherAudio();
   show("scr-dungeon");
   renderPlaques("dg-plaques");
   updateHUD();
@@ -133,6 +161,7 @@ export function step(back: boolean, byGuest = false): void {
   const mob = mobAt(state.level, nx, ny);
   if (mob) { engage(mob); return; } // you charge them where they stand
   state.x = nx; state.y = ny; state.steps++; markVisited();
+  advanceTime(2);
   sfx("step");
   const raw = MAPS[state.level][ny][nx];
   renderView();
@@ -147,6 +176,7 @@ export function combatWon(): void {
   state.mobs[lvl] = (state.mobs[lvl] ?? []).filter(m => m !== engagedMob &&
     !(m.x === engagedMob!.x && m.y === engagedMob!.y));
   engagedMob = null;
+  advanceTime(15, 4); // a fight is not a stroll
   save();
 }
 export function combatFled(): void { engagedMob = null; }

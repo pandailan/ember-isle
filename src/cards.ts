@@ -168,6 +168,9 @@ export function cleanupLend(s: GameState): void {
 /** Upgrade a pre-card (v1) save in place: members become common cards. */
 export function migrateState(s: GameState & {version?: number}): GameState {
   if (s.mobs) s.mobs[3] = s.mobs[3] ?? spawnMobs(3); // the moor opened after some saves were written
+  s.clock = s.clock ?? 1230; // clocks and weather arrived after some saves too
+  s.weather = s.weather ?? "clear";
+  s.weatherLeft = s.weatherLeft ?? 70;
   if (s.version === 2) return s;
   for (const m of s.party ?? []) {
     m.id = m.id ?? genId();

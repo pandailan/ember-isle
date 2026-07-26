@@ -50,6 +50,8 @@ export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; n
 /** A monster pack living on the map — visible in the corridor, chases the party. */
 export interface Mob { x: number; y: number; key: string; group: string[]; }
 
+export type Weather = "clear" | "mist" | "rain" | "storm";
+
 export interface GameState {
   version: number;
   party: Member[];        // the marching four
@@ -63,6 +65,8 @@ export interface GameState {
   bossDown: boolean; heart: boolean;
   steps: number; kills: number; graceLeft: number;
   inDungeon: boolean; charm?: boolean;
+  /** World clock in minutes (0..1439) and the weather front passing over the isle. */
+  clock: number; weather: Weather; weatherLeft: number;
   /** Co-op lending bookkeeping (host side): guest-owned card ids currently in
       the party, the host cards they displaced, and gold owed to the guest. */
   coopGuestIds?: string[];

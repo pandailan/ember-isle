@@ -3,6 +3,7 @@
    itself is rendered by the WebGL engine in scene3d.ts. */
 
 import { MAPS, LEVEL_NAMES, DIRN, ENEMIES } from "./data";
+import { phaseName, WEATHER_NAMES } from "./daytime";
 import { state, cellAt, mobAt } from "./state";
 import { $, reduceMotion } from "./util";
 
@@ -45,7 +46,10 @@ function glFallback(msg: string): void {
 /** Called by game code after any move or change: refreshes labels + automap.
     The 3D view itself re-renders continuously from state. */
 export function renderView(): void {
-  $("pos-label").textContent = LEVEL_NAMES[state.level];
+  const wname = WEATHER_NAMES[state.weather] ? " · " + WEATHER_NAMES[state.weather] : "";
+  $("pos-label").textContent = (state.level === 0 || state.level === 3)
+    ? `${LEVEL_NAMES[state.level]} · ${phaseName(state.clock)}${wname}`
+    : LEVEL_NAMES[state.level];
   $("dir-label").textContent = DIRN[state.dir];
   if (amap.classList.contains("on")) renderAutomap();
 }

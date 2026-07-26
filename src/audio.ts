@@ -66,6 +66,41 @@ export function unlock(): void {
   const c = ensure();
   if (c && c.state === "suspended") void c.resume();
   startScheduler();
+  applyRain();
+}
+
+/* ============================== WEATHER BED ============================== */
+/* A looping softened-noise wash for rain; only audible while walking outdoors. */
+let rainGain: GainNode | null = null;
+let curWeather = "clear";
+let weatherOutdoors = false;
+
+function ensureRainLoop(): void {
+  if (rainGain || !ctx || !master) return;
+  const len = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = last * 0.72 + w * 0.28; d[i] = last; }
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+  const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1100; lp.Q.value = 0.3;
+  rainGain = ctx.createGain(); rainGain.gain.value = 0;
+  src.connect(lp); lp.connect(rainGain); rainGain.connect(master);
+  src.start();
+}
+
+export function setWeatherAudio(weather: string, outdoors: boolean): void {
+  curWeather = weather; weatherOutdoors = outdoors;
+  applyRain();
+}
+
+function applyRain(): void {
+  if (!ctx) return;
+  ensureRainLoop();
+  if (!rainGain) return;
+  const target = weatherOutdoors && scene === "town"
+    ? (curWeather === "storm" ? 0.34 : curWeather === "rain" ? 0.2 : 0) : 0;
+  rainGain.gain.setTargetAtTime(target, ctx.currentTime, 1.2);
 }
 
 /* ============================== VOICES ============================== */
@@ -182,6 +217,7 @@ export function setScene(s: Scene): void {
   beatIndex = 0;
   if (ctx) nextBeat = ctx.currentTime + 0.1;
   if (wet && ctx && s !== "off") wet.gain.setTargetAtTime(MUSIC[s].wet, ctx.currentTime, 0.5);
+  applyRain();
 }
 
 function startScheduler(): void {
@@ -227,7 +263,7 @@ function scheduleBeat(m: SceneMusic, t: number, beat: number): void {
 /* ============================== SFX ============================== */
 export type Sfx =
   | "step" | "bump" | "hit" | "crit" | "spell" | "heal" | "chest" | "stairs"
-  | "fountain" | "combat" | "victory" | "defeat" | "levelup" | "recruit" | "tap";
+  | "fountain" | "combat" | "victory" | "defeat" | "levelup" | "recruit" | "tap" | "thunder";
 
 export function sfx(name: Sfx): void {
   if (!ensure() || muted || !ctx) return;
@@ -250,5 +286,7 @@ export function sfx(name: Sfx): void {
     case "levelup": [523, 659, 784, 1047].forEach((f, i) => q(f, 0.22, "square", 0.07, i * 0.08, {cutoff: 1800})); break;
     case "recruit": [392, 494, 587, 784].forEach((f, i) => q(f, 0.24, "triangle", 0.12, i * 0.09)); break;
     case "tap":     q(700, 0.04, "sine", 0.05); break;
+    case "thunder": noiseHit(t, 1.1, 0.5, 140); noiseHit(t + 0.35, 2.4, 0.32, 85);
+                    q(42, 2.2, "sine", 0.35); q(58, 1.2, "sine", 0.18, 0.25); break;
   }
 }

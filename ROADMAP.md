@@ -39,7 +39,13 @@
 - **Town & the Moor** — pitched roofs, chimneys, and varied building heights in
   the harbor; floating signposts over every sight (fading out up close); a west
   gate into the first wilderness, The Moor of Vhalis — an open night moor with
-  low outcrops, pines, fireflies, and Moor Wolf packs.
+  low outcrops, pines, fireflies, and Moor Wolf packs. The moor's far edges are
+  open sea with foam-lined coast; barriers inland are boulders and thickets.
+- **Time & weather** — a world clock advanced by walking and fighting (saved,
+  synced to co-op guests) drives a keyframed sky: dawn, day, golden hour, dusk,
+  and night, with a sun and moon that cross the sky and stars and fireflies
+  that belong to the dark. Weather fronts roll over the isle — sea mist, rain,
+  and storms with lightning, thunder, and a rain soundscape.
 
 ## Next
 

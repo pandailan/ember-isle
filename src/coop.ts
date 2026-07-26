@@ -9,7 +9,7 @@ import { $ } from "./util";
 import { renderView } from "./render";
 import { getLogLines, setLogLines, dlog, updateHUD } from "./dungeon";
 import { openPicker } from "./tavern";
-import { sfx } from "./audio";
+import { sfx, setWeatherAudio } from "./audio";
 import {
   initTrade, onTradeMessage, tradeLinkLost, forceLeaveForCombat, isAtTradePost,
   openTradePost, type TradeWorld,
@@ -208,6 +208,7 @@ function applySync(m: SyncMsg): void {
   if (!m.state) return;
   guestMergeProgress(m.state);
   setState(m.state);
+  setWeatherAudio(m.state.weather ?? "clear", m.state.level === 0 || m.state.level === 3);
   lastCombatView = m.combat;
   const scr = m.screen;
   if (isAtTradePost()) {

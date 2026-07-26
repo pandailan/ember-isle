@@ -96,8 +96,8 @@ export const MAPS: Record<number, string[]> = {
 };
 
 export const LEVEL_NAMES: Record<number, string> = {
-  0:"Vhalis Harbor · Night",
-  3:"The Moor of Vhalis · Night",
+  0:"Vhalis Harbor",
+  3:"The Moor of Vhalis",
   1:"The Ember Caves · Depth I",
   2:"The Ember Deep · Depth II",
 };

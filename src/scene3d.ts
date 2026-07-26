@@ -12,6 +12,8 @@ import { state, cellAt } from "./state";
 import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome } from "./biomes";
 import { net } from "./net";
 import { reduceMotion, rnd } from "./util";
+import { hourOf } from "./daytime";
+import { sfx } from "./audio";
 
 /* ---------- deterministic per-cell hash (matches the old renderer) ---------- */
 const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
@@ -56,6 +58,19 @@ let emberMode: "rise" | "drift" = "rise";
 /* the sea: shared drifting textures for coast tiles and the open water */
 let waterTexTile: THREE.CanvasTexture | null = null;
 let waterTexSea: THREE.CanvasTexture | null = null;
+
+/* the living sky: day cycle, weather, storm light, rain */
+let starsMat: THREE.PointsMaterial | null = null;
+let moonSpr: THREE.Sprite | null = null;
+let sunSpr: THREE.Sprite | null = null;
+let plScale = 1;      // sky-driven player-light multiplier (daylight dims the torch)
+let skyBloom = 0.45;
+let nightK = 1;       // how dark the sky is (gates stars and fireflies)
+let flashV = 0; let nextFlash = 0; let thunderAt = -1;
+let rain: THREE.LineSegments | null = null;
+let rainOff: Float32Array | null = null;
+let rainLevel = 0;
+const RAIN_N = 240;
 
 /* ---------- texture helpers ---------- */
 const texCache = new Map<HTMLCanvasElement, THREE.CanvasTexture>();
@@ -421,6 +436,7 @@ export function buildLevel(): void {
   worldGroup = new THREE.Group();
   scene.add(worldGroup);
   anchors = []; consumables = []; flameSprites = []; fireGroup = null; labels = [];
+  starsMat = null; moonSpr = null; sunSpr = null;
   for (const mv of mobViews) { scene.remove(mv.sprite); scene.remove(mv.shadow); }
   mobViews = [];
 
@@ -484,10 +500,14 @@ export function buildLevel(): void {
       starPos[i * 3 + 2] = mh / 2 + Math.sin(a) * Math.cos(e) * 40;
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    worldGroup.add(new THREE.Points(starGeo, new THREE.PointsMaterial({color: 0xe8d9b0, size: 0.12, sizeAttenuation: true, transparent: true, opacity: 0.8})));
-    const moon = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTexture("rgba(225,228,215,.9)"), transparent: true}));
-    moon.position.set(mw / 2 + 18, 16, mh / 2 - 30); moon.scale.setScalar(4);
-    worldGroup.add(moon);
+    starsMat = new THREE.PointsMaterial({color: 0xe8d9b0, size: 0.12, sizeAttenuation: true, transparent: true, opacity: 0.8});
+    worldGroup.add(new THREE.Points(starGeo, starsMat));
+    moonSpr = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTexture("rgba(225,228,215,.9)"), transparent: true}));
+    moonSpr.position.set(mw / 2 + 18, 16, mh / 2 - 30); moonSpr.scale.setScalar(4);
+    worldGroup.add(moonSpr);
+    sunSpr = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTexture("rgba(255,214,140,.95)"), transparent: true, opacity: 0}));
+    sunSpr.scale.setScalar(6);
+    worldGroup.add(sunSpr);
   }
 
   // walls, doors, wall props
@@ -709,6 +729,92 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
   worldGroup.add(g);
 }
 
+/* ---------- the living sky ---------- */
+interface SkyKey { h: number; sky: number; fog: number; amb: number; ambI: number; hemiI: number; stars: number; sun: number; pl: number; fogD: number; }
+const SKY_KEYS: SkyKey[] = [
+  {h: 0,    sky: 0x070b16, fog: 0x0a0e1a, amb: 0x9aa4c8, ambI: 0.30, hemiI: 0.5,  stars: 1,    sun: 0,    pl: 1,    fogD: 1},
+  {h: 4.5,  sky: 0x070b16, fog: 0x0a0e1a, amb: 0x9aa4c8, ambI: 0.30, hemiI: 0.5,  stars: 1,    sun: 0,    pl: 1,    fogD: 1},
+  {h: 6.2,  sky: 0x3a3048, fog: 0x463850, amb: 0xc8a89c, ambI: 0.44, hemiI: 0.75, stars: 0.3,  sun: 0.3,  pl: 0.7,  fogD: 0.9},
+  {h: 8,    sky: 0x7e96bc, fog: 0x8ea6c4, amb: 0xe8dcc4, ambI: 0.74, hemiI: 1.15, stars: 0,    sun: 1,    pl: 0.25, fogD: 0.6},
+  {h: 13,   sky: 0x93b4da, fog: 0xa4bcd6, amb: 0xf2e9d6, ambI: 0.88, hemiI: 1.3,  stars: 0,    sun: 1,    pl: 0.2,  fogD: 0.5},
+  {h: 17.5, sky: 0x9a7484, fog: 0xb08e80, amb: 0xf0cfa4, ambI: 0.72, hemiI: 1.0,  stars: 0,    sun: 0.85, pl: 0.35, fogD: 0.7},
+  {h: 19.5, sky: 0x3c2c44, fog: 0x4a3850, amb: 0xc8a8ac, ambI: 0.46, hemiI: 0.7,  stars: 0.45, sun: 0.12, pl: 0.7,  fogD: 0.85},
+  {h: 21,   sky: 0x070b16, fog: 0x0a0e1a, amb: 0x9aa4c8, ambI: 0.30, hemiI: 0.5,  stars: 1,    sun: 0,    pl: 1,    fogD: 1},
+  {h: 24,   sky: 0x070b16, fog: 0x0a0e1a, amb: 0x9aa4c8, ambI: 0.30, hemiI: 0.5,  stars: 1,    sun: 0,    pl: 1,    fogD: 1},
+];
+const _ca = new THREE.Color(), _cb = new THREE.Color();
+const _sky = new THREE.Color(), _fogC = new THREE.Color(), _amb = new THREE.Color();
+const MOOR_TINT = new THREE.Color(0.85, 1.0, 0.92);
+
+function updateSky(dt: number, biome: Biome): void {
+  const h = hourOf(state.clock ?? 1230);
+  let i = 0;
+  while (i < SKY_KEYS.length - 2 && SKY_KEYS[i + 1].h <= h) i++;
+  const a = SKY_KEYS[i], b = SKY_KEYS[i + 1];
+  const t = Math.min(1, Math.max(0, (h - a.h) / (b.h - a.h)));
+  const L = (x: number, y: number) => x + (y - x) * t;
+  _sky.copy(_ca.set(a.sky)).lerp(_cb.set(b.sky), t);
+  _fogC.copy(_ca.set(a.fog)).lerp(_cb.set(b.fog), t);
+  _amb.copy(_ca.set(a.amb)).lerp(_cb.set(b.amb), t);
+  let ambI = L(a.ambI, b.ambI), hemiI = L(a.hemiI, b.hemiI);
+  let stars = L(a.stars, b.stars), sun = L(a.sun, b.sun);
+  plScale = L(a.pl, b.pl);
+  let fogD = L(a.fogD, b.fogD) * (biome.id === "moor" ? 0.08 : 0.055);
+  // the weather leans on everything
+  const w = state.weather ?? "clear";
+  if (w === "mist") { fogD *= 2.4; stars *= 0.25; sun *= 0.5; ambI *= 0.92; }
+  else if (w === "rain") { fogD *= 1.7; stars *= 0.15; sun *= 0.35; ambI *= 0.8; _sky.multiplyScalar(0.72); _fogC.multiplyScalar(0.78); }
+  else if (w === "storm") { fogD *= 2.0; stars = 0; sun *= 0.12; ambI *= 0.62; _sky.multiplyScalar(0.5); _fogC.multiplyScalar(0.55); }
+  if (biome.id === "moor") { _sky.multiply(MOOR_TINT); _fogC.multiply(MOOR_TINT); }
+  // storm flashes: the world blinks white, thunder follows
+  if (w === "storm" && !reduceMotion) {
+    if (animT > nextFlash) {
+      flashV = 1;
+      thunderAt = animT + 0.5 + rnd() * 1.6;
+      nextFlash = animT + 5 + rnd() * 9;
+    }
+    flashV *= Math.exp(-dt * 6);
+    if (thunderAt > 0 && animT >= thunderAt) { sfx("thunder"); thunderAt = -1; }
+    ambI += flashV * 1.5; hemiI += flashV * 1.8;
+    _sky.lerp(_ca.set(0xcdd6e8), flashV * 0.6);
+  } else flashV = 0;
+  (scene.background as THREE.Color).copy(_sky);
+  const fog = scene.fog as THREE.FogExp2;
+  fog.color.copy(_fogC); fog.density = fogD;
+  ambient.color.copy(_amb); ambient.intensity = ambI;
+  hemi.intensity = hemiI;
+  skyBloom = 0.3 + 0.15 * plScale;
+  nightK = stars;
+  // lights across the sky
+  const mw = MAPS[state.level][0].length, mh = MAPS[state.level].length;
+  if (starsMat) starsMat.opacity = 0.8 * stars;
+  if (sunSpr) {
+    const ts = Math.min(1, Math.max(0, (h - 5.5) / 13));
+    sunSpr.position.set(mw / 2 + (1 - 2 * ts) * 30, 2.5 + Math.sin(ts * Math.PI) * 24, mh / 2 - 32);
+    sunSpr.material.opacity = sun;
+  }
+  if (moonSpr) {
+    const tm = Math.min(1, Math.max(0, (((h - 18) + 24) % 24) / 12));
+    moonSpr.position.set(mw / 2 + (1 - 2 * tm) * 28, 3 + Math.sin(tm * Math.PI) * 22, mh / 2 - 30);
+    moonSpr.material.opacity = Math.min(1, stars * 1.3);
+  }
+}
+
+function ensureRain3d(): void {
+  if (rain) return;
+  rainOff = new Float32Array(RAIN_N * 3);
+  for (let i = 0; i < RAIN_N; i++) {
+    rainOff[i * 3] = (rnd() - 0.5) * 13;
+    rainOff[i * 3 + 1] = rnd() * 2.4;
+    rainOff[i * 3 + 2] = (rnd() - 0.5) * 13;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(RAIN_N * 6), 3));
+  rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({color: 0x9cb4c8, transparent: true, opacity: 0}));
+  rain.frustumCulled = false;
+  scene.add(rain);
+}
+
 /* ---------- per-frame update ---------- */
 const yawFor = (dir: number) => [0, -Math.PI / 2, Math.PI, Math.PI / 2][dir];
 
@@ -717,6 +823,7 @@ export function frame(dt: number): void {
   animT += dt;
   if (builtLevel !== state.level) buildLevel();
   const biome = biomeFor(state.level);
+  if (biome.sky) updateSky(dt, biome); else flashV = 0;
 
   // camera glide
   const target = new THREE.Vector3(state.x + 0.5, 0.5, state.y + 0.5);
@@ -735,7 +842,9 @@ export function frame(dt: number): void {
   // subtle breathing bob
   if (!reduceMotion) camera.position.y = 0.5 + Math.sin(animT * 1.7) * 0.006;
   playerLight.position.copy(camera.position).add(new THREE.Vector3(0, 0.06, 0));
-  if (!reduceMotion) playerLight.intensity = (biome.sky ? 5 : 13) * (0.93 + 0.07 * Math.sin(animT * 5.3) + 0.03 * Math.sin(animT * 13.7));
+  const plBase = biome.sky ? 5 * plScale : 13;
+  playerLight.intensity = reduceMotion ? plBase
+    : plBase * (0.93 + 0.07 * Math.sin(animT * 5.3) + 0.03 * Math.sin(animT * 13.7));
 
   // dynamic light pool: nearest anchors win
   const sorted = anchors.slice().sort((a, b) =>
@@ -805,6 +914,9 @@ export function frame(dt: number): void {
   }
   // rising embers / wandering fireflies
   if (emberPoints && emberData) {
+    if (emberMode === "drift") { // fireflies belong to the dark
+      (emberPoints.material as THREE.PointsMaterial).opacity = 0.8 * Math.min(1, nightK + 0.05);
+    }
     const pos = emberPoints.geometry.getAttribute("position") as THREE.BufferAttribute;
     const mw = MAPS[state.level][0].length, mh = MAPS[state.level].length;
     for (let i = 0; i < pos.count; i++) {
@@ -830,6 +942,31 @@ export function frame(dt: number): void {
     }
     pos.needsUpdate = true;
   }
-  if (bloom) bloom.strength = biome.sky ? 0.45 : 0.7;
+  // rain: a curtain of short streaks falling around the party
+  const wWeather = state.weather ?? "clear";
+  const wantRain = biome.sky && (wWeather === "rain" || wWeather === "storm")
+    ? (wWeather === "storm" ? 1 : 0.55) : 0;
+  rainLevel += (wantRain - rainLevel) * (1 - Math.exp(-dt * 1.8));
+  if (rainLevel > 0.02) {
+    ensureRain3d();
+    rain!.visible = true;
+    (rain!.material as THREE.LineBasicMaterial).opacity = 0.35 * rainLevel;
+    const speed = 5 + 3.5 * rainLevel;
+    const slant = wWeather === "storm" ? 0.45 : 0.12;
+    const vp = rain!.geometry.getAttribute("position") as THREE.BufferAttribute;
+    for (let i = 0; i < RAIN_N; i++) {
+      rainOff![i * 3 + 1] -= speed * dt;
+      if (rainOff![i * 3 + 1] < 0) {
+        rainOff![i * 3] = (rnd() - 0.5) * 13;
+        rainOff![i * 3 + 1] = 2 + rnd();
+        rainOff![i * 3 + 2] = (rnd() - 0.5) * 13;
+      }
+      const rx = camera.position.x + rainOff![i * 3], ry = rainOff![i * 3 + 1], rz = camera.position.z + rainOff![i * 3 + 2];
+      vp.setXYZ(i * 2, rx, ry, rz);
+      vp.setXYZ(i * 2 + 1, rx - slant * 0.35, ry - 0.14 - 0.08 * rainLevel, rz);
+    }
+    vp.needsUpdate = true;
+  } else if (rain) rain.visible = false;
+  if (bloom) bloom.strength = biome.sky ? skyBloom : 0.7;
   composer.render();
 }
