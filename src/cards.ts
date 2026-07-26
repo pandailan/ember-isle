@@ -103,7 +103,7 @@ export function rollVisitors(state: GameState): Member[] {
 export function todayStamp(): string { return new Date().toDateString(); }
 
 /* ============================== WORLD MOBS ============================== */
-const MOB_COUNT: Record<number, number> = {1: 6, 2: 7, 3: 7, 4: 4, 5: 2};
+const MOB_COUNT: Record<number, number> = {1: 6, 2: 7, 3: 9, 4: 5, 5: 2};
 
 /** Populate a depth with visible, roaming monster packs. */
 export function spawnMobs(level: number, existing: Mob[] = []): Mob[] {
@@ -233,6 +233,18 @@ export function migrateState(s: GameState & {version?: number}): GameState {
     s.mobs[4] = s.mobs[4] ?? spawnMobs(4); // and later, the cove
   }
   s.binder = s.binder ?? [];
+  // the wilds were widened after some saves were written: relocate what no longer fits
+  if ((s.mapsV ?? 1) < 2) {
+    for (const lvl of [3, 4]) {
+      if (s.mobs?.[lvl]) s.mobs[lvl] = s.mobs[lvl].filter(m => MAPS[lvl][m.y]?.[m.x] === ".");
+      if (s.visited?.[lvl]) s.visited[lvl] = [];
+    }
+    if ((s.level === 3 || s.level === 4) && !".CFV".includes(MAPS[s.level][s.y]?.[s.x] ?? "#")) {
+      const entry = s.level === 3 ? [2, 1] : [3, 2];
+      s.x = entry[0]; s.y = entry[1];
+    }
+    s.mapsV = 2;
+  }
   s.clock = s.clock ?? 1230; // clocks and weather arrived after some saves too
   s.weather = s.weather ?? "clear";
   s.weatherLeft = s.weatherLeft ?? 70;

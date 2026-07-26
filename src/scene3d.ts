@@ -19,6 +19,53 @@ import { sfx } from "./audio";
 /* ---------- deterministic per-cell hash (matches the old renderer) ---------- */
 const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
 
+/* ---------- terrain elevation: the outdoors rolls, and falls to the sea ---------- */
+const latt = (ix: number, iz: number) => ((cellHash(ix + 101, iz + 57) >>> 3) % 997) / 997;
+const smoothT = (t: number) => t * t * (3 - 2 * t);
+function vnoise(x: number, z: number): number {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const sx = smoothT(x - ix), sz = smoothT(z - iz);
+  const a = latt(ix, iz), b = latt(ix + 1, iz), c = latt(ix, iz + 1), d = latt(ix + 1, iz + 1);
+  const top = a + (b - a) * sx, bot = c + (d - c) * sx;
+  return top + (bot - top) * sz;
+}
+
+let elevCorners: Float32Array | null = null; // lattice of corner heights, (mw+1)×(mh+1)
+let elevW = 0, elevH = 0;
+const ELEV_AMP: Record<string, number> = {harbor: 0.06, moor: 0.3, cove: 0.22};
+
+function computeElevation(map: string[], biome: Biome): void {
+  const amp = biome.sky ? ELEV_AMP[biome.id] ?? 0.25 : 0;
+  if (!amp) { elevCorners = null; return; }
+  const mw = map[0].length, mh = map.length;
+  elevW = mw + 1; elevH = mh + 1;
+  elevCorners = new Float32Array(elevW * elevH);
+  const isWater = (x: number, y: number) => (map[y]?.[x] ?? "~") === "~";
+  for (let cy = 0; cy < elevH; cy++) for (let cx = 0; cx < elevW; cx++) {
+    let wet = false, near = false;
+    for (let dy = -1; dy <= 0; dy++) for (let dx = -1; dx <= 0; dx++) {
+      if (isWater(cx + dx, cy + dy)) wet = true;
+    }
+    for (let dy = -2; dy <= 1; dy++) for (let dx = -2; dx <= 1; dx++) {
+      if (isWater(cx + dx, cy + dy)) near = true;
+    }
+    elevCorners[cy * elevW + cx] = wet ? 0 : vnoise(cx * 0.42, cy * 0.42) * amp * (near ? 0.35 : 1);
+  }
+}
+
+/** Ground height at any world point; matches the displaced floor mesh exactly. */
+function groundHAt(wx: number, wz: number): number {
+  if (!elevCorners) return 0;
+  const x = Math.min(Math.max(wx, 0), elevW - 1.001);
+  const z = Math.min(Math.max(wz, 0), elevH - 1.001);
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fxq = x - ix, fzq = z - iz;
+  const i = iz * elevW + ix;
+  const a = elevCorners[i], b = elevCorners[i + 1], c = elevCorners[i + elevW], d = elevCorners[i + elevW + 1];
+  const top = a + (b - a) * fxq, bot = c + (d - c) * fxq;
+  return top + (bot - top) * fzq;
+}
+
 /* ---------- module state ---------- */
 let renderer: THREE.WebGLRenderer | null = null;
 let composer: EffectComposer | null = null;
@@ -405,8 +452,8 @@ function addFlame(group: THREE.Group, x: number, y: number, z: number, color: st
 let placingX = 0; let placingY = 0; // the cell being furnished (for consumables)
 
 /** Impassable wilds: pick which landmark or growth claims the cell. */
-function buildWilds(x: number, y: number, h: number): void {
-  const g = new THREE.Group(); g.position.set(x, 0, y);
+function buildWilds(x: number, y: number, h: number, elev = 0): void {
+  const g = new THREE.Group(); g.position.set(x, elev - 0.02, y);
   const id = h % 7 === 3 ? "ruin" : h % 3 === 0 ? "pineStand" : "boulderCluster";
   ASSETS[id]({group: g, x: 0, z: 0, hash: id === "ruin" ? h >> 1 : h, biome: biomeFor(state.level)});
   worldGroup.add(g);
@@ -454,6 +501,8 @@ export function buildLevel(): void {
   playerLight.color.set(isMoor ? 0xc3d2e6 : town ? 0xb8c4e6 : 0xffc478);
   playerLight.intensity = town ? 3.2 : 13;
 
+  computeElevation(map, biome);
+
   // materials from the biome bakery
   const albedos = biomeTextures(biome);
   const normals = biomeNormalMaps(biome);
@@ -465,11 +514,24 @@ export function buildLevel(): void {
   // floor & ceiling
   const ftex = tex(biomeFloorTexture(biome), true);
   ftex.repeat.set(mw, mh);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(mw, mh),
-    new THREE.MeshStandardMaterial({map: ftex, roughness: 0.95}));
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.set(mw / 2, 0, mh / 2);
-  worldGroup.add(floor);
+  let floorGeo: THREE.BufferGeometry;
+  if (elevCorners) { // the ground rolls: one vertex per cell corner, lifted by the heightfield
+    const pg = new THREE.PlaneGeometry(mw, mh, mw, mh);
+    pg.rotateX(-Math.PI / 2);
+    pg.translate(mw / 2, 0, mh / 2);
+    const vp = pg.getAttribute("position") as THREE.BufferAttribute;
+    for (let i = 0; i < vp.count; i++) vp.setY(i, groundHAt(vp.getX(i), vp.getZ(i)));
+    pg.computeVertexNormals();
+    floorGeo = pg;
+    const floor = new THREE.Mesh(pg, new THREE.MeshStandardMaterial({map: ftex, roughness: 0.95}));
+    worldGroup.add(floor);
+  } else {
+    const flat = new THREE.PlaneGeometry(mw, mh);
+    flat.rotateX(-Math.PI / 2);
+    flat.translate(mw / 2, 0, mh / 2);
+    floorGeo = flat;
+    worldGroup.add(new THREE.Mesh(flat, new THREE.MeshStandardMaterial({map: ftex, roughness: 0.95})));
+  }
   if (town) { // it is an isle: open sea runs to the horizon under every sky
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), getWaterMats()[1]);
     sea.rotation.x = -Math.PI / 2;
@@ -523,9 +585,9 @@ export function buildLevel(): void {
       cloudTex.repeat.set(2.2, 2.2);
     }
     cloudMat = new THREE.MeshBasicMaterial({color: 0x000000, alphaMap: cloudTex, transparent: true, opacity: 0, depthWrite: false});
-    cloudMesh = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), cloudMat);
-    cloudMesh.rotation.x = -Math.PI / 2;
-    cloudMesh.position.set(mw / 2, 0.045, mh / 2);
+    const cloudGeo = floorGeo.clone(); // shadows hug the rolling ground
+    cloudGeo.translate(0, 0.045, 0);
+    cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
     worldGroup.add(cloudMesh);
     // gulls ride the air over harbor and cove
     if (biome.id === "harbor" || biome.id === "cove") {
@@ -548,9 +610,10 @@ export function buildLevel(): void {
     const solidWall = ch === "#" || isDoor;
     if (!solidWall) continue;
     const h = cellHash(x, y);
+    const elev = groundHAt(x + 0.5, y + 0.5);
     const perimeter = x === 0 || y === 0 || x === mw - 1 || y === mh - 1;
     if ((isMoor || isCove) && !isDoor && !perimeter) { // the open wilds build no masonry
-      buildWilds(x, y, h);
+      buildWilds(x, y, h, elev);
       continue;
     }
     // buildings rise to different heights; the moor keeps only the town's seaward wall
@@ -560,7 +623,7 @@ export function buildLevel(): void {
     if (isDoor) hgt = Math.max(hgt, 1.05);
     const wall = new THREE.Mesh(wallGeo, wallMats[h % wallMats.length]);
     wall.scale.y = hgt;
-    wall.position.set(x + 0.5, hgt / 2, y + 0.5);
+    wall.position.set(x + 0.5, elev + hgt / 2 - 0.02, y + 0.5);
     worldGroup.add(wall);
     // doors greet every open side, so gates read from both directions
     const faces = isDoor
@@ -569,12 +632,12 @@ export function buildLevel(): void {
     const roofed = isHarbor && !perimeter;
     if (roofed) {
       const ridgeAlongZ = faces.length ? faces[0][0] !== 0 : h % 2 === 1; // door ridges parallel the facade
-      const rg = new THREE.Group(); rg.position.set(x + 0.5, hgt + 0.18, y + 0.5);
+      const rg = new THREE.Group(); rg.position.set(x + 0.5, elev + hgt + 0.16, y + 0.5);
       ASSETS.roof({group: rg, x, z: y, hash: h, biome, ridgeAlongZ});
       worldGroup.add(rg);
       if (h % 3 === 0) {
         const cg = new THREE.Group();
-        cg.position.set(x + 0.5 + (ridgeAlongZ ? 0 : 0.2), hgt + 0.3, y + 0.5 + (ridgeAlongZ ? 0.2 : 0));
+        cg.position.set(x + 0.5 + (ridgeAlongZ ? 0 : 0.2), elev + hgt + 0.28, y + 0.5 + (ridgeAlongZ ? 0.2 : 0));
         ASSETS.chimney({group: cg, x, z: y, hash: h, biome});
         worldGroup.add(cg);
       }
@@ -584,11 +647,11 @@ export function buildLevel(): void {
         const dt = doorTexture(ch, albedos[h % albedos.length]);
         const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.98, 0.98),
           new THREE.MeshStandardMaterial({map: dt, roughness: 0.9}));
-        plane.position.set(x + 0.5 + face[0] * 0.505, 0.5, y + 0.5 + face[1] * 0.505);
-        plane.lookAt(x + 0.5 + face[0] * 2, 0.5, y + 0.5 + face[1] * 2);
+        plane.position.set(x + 0.5 + face[0] * 0.505, elev + 0.5, y + 0.5 + face[1] * 0.505);
+        plane.lookAt(x + 0.5 + face[0] * 2, elev + 0.5, y + 0.5 + face[1] * 2);
         worldGroup.add(plane);
         if (face === faces[0]) { // one door lamp is plenty, even on a two-faced gate
-          const lpos = new THREE.Vector3(x + 0.5 + face[0] * 0.55, 0.62, y + 0.5 + face[1] * 0.55);
+          const lpos = new THREE.Vector3(x + 0.5 + face[0] * 0.55, elev + 0.62, y + 0.5 + face[1] * 0.55);
           addFlame(worldGroup, lpos.x - face[1] * 0.22, lpos.y, lpos.z - face[0] * 0.22, "rgba(250,190,90,.85)", 0.2);
           addAnchor(lpos, 0xffc06a, 3.5, 4, 0.08);
         }
@@ -596,7 +659,7 @@ export function buildLevel(): void {
       const name = faces.length ? SIGN_NAMES[ch] : undefined;
       if (name) { // the sight, clearly marked
         const sp = labelSprite(name);
-        sp.position.set(x + 0.5 + faces[0][0] * 0.6, hgt + (roofed ? 0.72 : 0.4), y + 0.5 + faces[0][1] * 0.6);
+        sp.position.set(x + 0.5 + faces[0][0] * 0.6, elev + hgt + (roofed ? 0.72 : 0.4), y + 0.5 + faces[0][1] * 0.6);
         worldGroup.add(sp);
         labels.push({sprite: sp, pos: sp.position.clone()});
       }
@@ -605,7 +668,9 @@ export function buildLevel(): void {
       if (face) {
         for (const place of biome.wallProps) {
           if (h % place.mod !== place.rem) continue;
-          ASSETS[place.id]?.({group: worldGroup, x, z: y, hash: h, biome, faceDir: face});
+          const pg2 = new THREE.Group(); pg2.position.y = elev;
+          worldGroup.add(pg2);
+          ASSETS[place.id]?.({group: pg2, x, z: y, hash: h, biome, faceDir: face});
           break;
         }
       }
@@ -620,7 +685,9 @@ export function buildLevel(): void {
     if (ch === ".") {
       for (const place of biome.floorProps) {
         if (h % place.mod !== place.rem) continue;
-        ASSETS[place.id]?.({group: worldGroup, x, z: y, hash: h, biome});
+        const pg2 = new THREE.Group(); pg2.position.y = groundHAt(x + 0.5, y + 0.5);
+        worldGroup.add(pg2);
+        ASSETS[place.id]?.({group: pg2, x, z: y, hash: h, biome});
         break;
       }
       continue;
@@ -648,7 +715,7 @@ export function buildLevel(): void {
 
   builtLevel = level;
   // snap the camera on arrival in a new place
-  camera.position.set(state.x + 0.5, 0.5, state.y + 0.5);
+  camera.position.set(state.x + 0.5, 0.5 + groundHAt(state.x + 0.5, state.y + 0.5), state.y + 0.5);
   camera.rotation.y = yawFor(state.dir);
 }
 
@@ -661,8 +728,9 @@ function respawnEmber(i: number, mw: number, mh: number): void {
 }
 
 function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
+  const elev = groundHAt(x + 0.5, y + 0.5);
   const g = new THREE.Group();
-  g.position.set(x, 0, y);
+  g.position.set(x, elev, y);
   const cx = 0.5, cz = 0.5;
   if (ch === "~") { // the sea at the isle's edge (terrain, not an asset)
     const tile = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), getWaterMats()[0]);
@@ -688,7 +756,7 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
     const sp = labelSprite(SIGN_NAMES[ch]);
     sp.position.set(cx, 1.18, cz);
     g.add(sp);
-    labels.push({sprite: sp, pos: new THREE.Vector3(x + cx, 1.18, y + cz)});
+    labels.push({sprite: sp, pos: new THREE.Vector3(x + cx, elev + 1.18, y + cz)});
   }
   worldGroup.add(g);
 }
@@ -794,8 +862,8 @@ export function frame(dt: number): void {
   const biome = biomeFor(state.level);
   if (biome.sky) updateSky(dt, biome); else flashV = 0;
 
-  // camera glide
-  const target = new THREE.Vector3(state.x + 0.5, 0.5, state.y + 0.5);
+  // camera glide (eye height rides the terrain)
+  const target = new THREE.Vector3(state.x + 0.5, 0.5 + groundHAt(state.x + 0.5, state.y + 0.5), state.y + 0.5);
   const targetYaw = yawFor(state.dir);
   if (reduceMotion || camera.position.distanceTo(target) > 3) {
     camera.position.copy(target);
@@ -808,8 +876,9 @@ export function frame(dt: number): void {
     while (dy < -Math.PI) dy += Math.PI * 2;
     camera.rotation.y += dy * k;
   }
-  // subtle breathing bob
-  if (!reduceMotion) camera.position.y = 0.5 + Math.sin(animT * 1.7) * 0.006;
+  // subtle breathing bob over the ground height
+  camera.position.y = 0.5 + groundHAt(camera.position.x, camera.position.z)
+    + (reduceMotion ? 0 : Math.sin(animT * 1.7) * 0.006);
   playerLight.position.copy(camera.position).add(new THREE.Vector3(0, 0.06, 0));
   const plBase = biome.sky ? 3.2 * plScale : 13;
   playerLight.intensity = reduceMotion ? plBase
@@ -916,7 +985,8 @@ export function frame(dt: number): void {
       const pos = centre.clone().add(right.clone().multiplyScalar(lateral)).add(fwd.clone().multiplyScalar(depth));
       const alive2 = fv.hp > 0;
       const bob = reduceMotion || !alive2 ? 0 : Math.sin(animT * 2.4 + i * 2.2) * 0.02;
-      fs.sp.position.set(pos.x, (fv.boss ? 0.52 : 0.36) + bob, pos.z);
+      const fgh = groundHAt(pos.x, pos.z);
+      fs.sp.position.set(pos.x, fgh + (fv.boss ? 0.52 : 0.36) + bob, pos.z);
       if (fv.hp < fs.lastHp) fs.flash = 1;
       fs.lastHp = fv.hp;
       if (!reduceMotion) fs.flash = Math.max(0, fs.flash - dt * 3.2);
@@ -925,7 +995,7 @@ export function frame(dt: number): void {
       fs.sp.material.color.setRGB(1, 1 - fs.flash * 0.55, 1 - fs.flash * 0.55);
       fs.sp.material.opacity = alive2 ? 1 : 0.12; // the fallen fade to shade
       drawFoeBar(fs, fv.hp, fv.maxhp);
-      fs.bar.position.set(pos.x, (fv.boss ? 1.06 : 0.68), pos.z);
+      fs.bar.position.set(pos.x, fgh + (fv.boss ? 1.06 : 0.68), pos.z);
       fs.bar.visible = alive2;
     }
   }
@@ -960,10 +1030,11 @@ export function frame(dt: number): void {
     if (mv.cur.lengthSq() === 0 || mv.cur.distanceTo(tgt) > 3) mv.cur.copy(tgt);
     else mv.cur.lerp(tgt, reduceMotion ? 1 : 1 - Math.exp(-dt * 6));
     const bob = reduceMotion ? 0 : Math.sin(animT * 2.6 + mob.x * 7 + mob.y * 13) * 0.02;
-    mv.sprite.position.set(mv.cur.x, 0.34 + bob, mv.cur.z);
+    const mgh = groundHAt(mv.cur.x, mv.cur.z);
+    mv.sprite.position.set(mv.cur.x, mgh + 0.34 + bob, mv.cur.z);
     mv.sprite.scale.setScalar(0.62);
     mv.sprite.visible = true;
-    mv.shadow.position.set(mv.cur.x, 0.011, mv.cur.z);
+    mv.shadow.position.set(mv.cur.x, mgh + 0.011, mv.cur.z);
     mv.shadow.visible = true;
     const hue = ENEMIES[mob.key]?.hue;
     if (hue) mv.sprite.material.color.set(0xffffff);

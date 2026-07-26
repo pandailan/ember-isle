@@ -88,6 +88,14 @@
   red-banded tower whose lantern wakes at dusk, twin beams turning over the
   sea all night, visible from the moor coast and above the harbor rooftops.
 
+- **Rolling ground & open wilds** — outdoor terrain has elevation: a
+  deterministic heightfield lifts the floor mesh into low hills that fall to
+  sea level at every coast; the camera, ground cover, buildings, mobs, and
+  in-world fights all ride the same surface. The moor and cove were redrawn
+  twice as wide — broad open meadows and beaches where scattered rock
+  clusters, pine stands, and ruins mark loose paths instead of corridor
+  walls. Old saves relocate anything the new layouts displaced.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
