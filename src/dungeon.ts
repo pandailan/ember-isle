@@ -345,12 +345,15 @@ export function bindDungeonControls(): void {
     else if (e.key === "ArrowRight" || e.key === "d") doTurn(1);
     else if (e.key === "m") $("bt-map").click();
   });
-  // swipe on the viewport
-  let tsx = 0, tsy = 0;
-  view.addEventListener("touchstart", e => { tsx = e.touches[0].clientX; tsy = e.touches[0].clientY; }, {passive: true});
+  // swipe on the viewport: flick up walks, down retreats, sideways turns
+  let tsx = 0, tsy = 0, tst = 0;
+  view.addEventListener("touchstart", e => {
+    tsx = e.touches[0].clientX; tsy = e.touches[0].clientY; tst = performance.now();
+  }, {passive: true});
   view.addEventListener("touchend", e => {
+    if (performance.now() - tst > 500) return; // a lingering finger is not a flick
     const dx = e.changedTouches[0].clientX - tsx, dy = e.changedTouches[0].clientY - tsy;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 26) return;
     if (Math.abs(dx) > Math.abs(dy)) doTurn(dx > 0 ? 1 : -1); else doStep(dy > 0);
   }, {passive: true});
 }

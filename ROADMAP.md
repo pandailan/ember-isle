@@ -130,6 +130,15 @@
   blob at point-blank range; lifted and dimmed, it reads as a soft blue
   basin now.
 
+- **Filmic light & thumb controls** — the renderer now tone-maps with ACES
+  filmic (exposure 1.25) and bloom's threshold rose to 0.85, so near-field
+  hot spots — torches, lamps, the spring, the signal fire — compress into
+  warm bounded glows instead of clipping into bloom blobs, everywhere and
+  for every future light. Controls went touch-first: flick the viewport to
+  move (up walks, down retreats, sideways turns; taps and slow presses are
+  ignored), the movement diamond sits under the left thumb, and Map, Cards,
+  Potion, and Save fan out in a quarter-circle arc under the right thumb.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

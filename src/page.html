@@ -138,7 +138,7 @@
   #scr-dungeon{padding:10px 14px; gap:8px;}
   .viewwrap{position:relative; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#000;
     box-shadow:0 0 60px rgba(200,80,47,.07) inset;}
-  #view{display:block; width:100%; height:auto;}
+  #view{display:block; width:100%; height:auto; touch-action:none;}
   #automap{position:absolute; top:8px; right:8px; background:rgba(10,7,5,.88); border:1px solid var(--line);
     border-radius:6px; display:none;}
   #automap.on{display:block;}
@@ -190,9 +190,19 @@
   .rcard.tcard .pickt{min-height:30px; padding:3px 9px; font-size:.78rem;}
   .plaque.tgt{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber) inset; cursor:pointer;}
 
-  .dpad{display:grid; grid-template-columns:repeat(5,1fr); gap:8px;}
-  .dpad button{font-size:1.25rem; min-height:54px; padding:6px;}
-  .dpad .small{font-size:.8rem;}
+  /* thumb controls: movement diamond under the left thumb,
+     actions fanned in a quarter-circle under the right */
+  .controls{display:flex; justify-content:space-between; align-items:flex-end; gap:10px;}
+  .movepad{display:grid; grid-template-areas:"l f r" ". b ."; gap:8px;
+    grid-template-columns:repeat(3,minmax(52px,64px)); grid-template-rows:repeat(2,54px); flex:1; max-width:240px;}
+  .movepad button{font-size:1.25rem; padding:6px; border-radius:14px;}
+  #bt-fwd{grid-area:f;} #bt-left{grid-area:l;} #bt-right{grid-area:r;} #bt-back{grid-area:b;}
+  .arc{position:relative; width:190px; height:156px; flex:none;}
+  .arc button{position:absolute; width:56px; height:56px; border-radius:50%; font-size:.74rem; padding:0;}
+  #bt-map   {left:126px; top:0;}
+  #bt-cards {left:74px;  top:24px;}
+  #bt-potion{left:36px;  top:62px;}
+  #bt-save  {left:14px;  top:104px; width:48px; height:48px; font-size:.68rem;}
 
   /* combat */
   .foes{display:flex; gap:8px; flex-wrap:wrap; justify-content:center;}
@@ -209,7 +219,7 @@
   #combat-panel[hidden]{display:none;}
   #combat-panel h3{text-align:center; font-size:1.05rem; color:var(--ember); margin:0;
     font-variant:small-caps; letter-spacing:.1em;}
-  body.fighting .dpad{display:none;}
+  body.fighting .controls{display:none;}
   body.fighting #log{display:none;}
   #cmdbar{display:flex; flex-direction:column; gap:8px;}
   #cmd-title{font-size:.85rem; color:var(--amber); font-variant:small-caps; letter-spacing:.12em; text-align:center;}
@@ -357,18 +367,19 @@
         <div id="cmd-btns"></div>
       </div>
     </div>
-    <div class="dpad">
-      <button class="small" id="bt-map">Map</button>
-      <button id="bt-left" aria-label="Turn left">⟲</button>
-      <button id="bt-fwd" aria-label="Step forward">▲</button>
-      <button id="bt-right" aria-label="Turn right">⟳</button>
-      <button class="small" id="bt-cards">Cards</button>
-      <button class="small" id="bt-potion">Potion</button>
-      <button class="small" id="bt-save">Save</button>
-      <span></span>
-      <button id="bt-back" aria-label="Step back">▼</button>
-      <span></span>
-      <span></span>
+    <div class="controls">
+      <div class="movepad">
+        <button id="bt-fwd" aria-label="Step forward">▲</button>
+        <button id="bt-left" aria-label="Turn left">⟲</button>
+        <button id="bt-right" aria-label="Turn right">⟳</button>
+        <button id="bt-back" aria-label="Step back">▼</button>
+      </div>
+      <div class="arc">
+        <button id="bt-map">Map</button>
+        <button id="bt-cards">Cards</button>
+        <button id="bt-potion">Potion</button>
+        <button id="bt-save">Save</button>
+      </div>
     </div>
   </div>
 

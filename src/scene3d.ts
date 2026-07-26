@@ -358,6 +358,9 @@ export function initScene(canvas: HTMLCanvasElement): boolean {
   } catch { return false; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // retina
   renderer.setSize(480, 360, false);
+  // filmic rolloff: near-field hot spots compress instead of clipping to a blob
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.25;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(66, 480 / 360, 0.05, 60);
   camera.rotation.order = "YXZ";
@@ -387,7 +390,7 @@ export function initScene(canvas: HTMLCanvasElement): boolean {
   });
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  bloom = new UnrealBloomPass(new THREE.Vector2(480, 360), 0.65, 0.55, 0.72);
+  bloom = new UnrealBloomPass(new THREE.Vector2(480, 360), 0.65, 0.55, 0.85);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   grade = new ShaderPass(GradeShader);
