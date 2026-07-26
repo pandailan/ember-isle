@@ -14,12 +14,12 @@ import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome
 import { ASSETS, FEATURE_ASSET, bindAssetFx } from "./assets3d";
 import { net } from "./net";
 import { reduceMotion, rnd } from "./util";
-import { groundLevelAt, hasElevation } from "./terrain";
+import { groundLevelAt, hasElevation, cellHash } from "./terrain";
 import { hourOf } from "./daytime";
 import { sfx } from "./audio";
 
 /* ---------- deterministic per-cell hash (matches the old renderer) ---------- */
-const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
+
 
 const groundHAt = (wx: number, wz: number): number => groundLevelAt(state.level, wx, wz);
 

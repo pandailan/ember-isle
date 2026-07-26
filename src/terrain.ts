@@ -5,7 +5,9 @@
 import { MAPS } from "./data";
 import { biomeFor } from "./biomes";
 
-const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
+/** The one cell hash: seeds props, wilds, elevation, and landmark rolls.
+    Renderer and rules must agree on it, so it lives here alone. */
+export const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
 const latt = (ix: number, iz: number) => ((cellHash(ix + 101, iz + 57) >>> 3) % 997) / 997;
 const smoothT = (t: number) => t * t * (3 - 2 * t);
 function vnoise(x: number, z: number): number {
@@ -84,6 +86,3 @@ export function landmarkAt(level: number, x: number, y: number): string | null {
   }
   return null;
 }
-
-/** The same cell hash the renderer seeds props with, for landmark flavor rolls. */
-export function landmarkHash(x: number, y: number): number { return cellHash(x, y); }
