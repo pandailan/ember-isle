@@ -16,7 +16,7 @@ export function newState(party: Member[]): GameState {
           gold: 80, potions: 2, level: 0, x: 7, y: 5, dir: 0 as Dir,
           mobs: {1: spawnMobs(1), 2: spawnMobs(2), 3: spawnMobs(3), 4: spawnMobs(4)},
           opened: [], visited: {0: ["7,5"], 1: ["1,1"], 2: [], 3: [], 4: [], 5: []}, bossDown: false, heart: false,
-          binder: [],
+          binder: [], landmarks: [],
           steps: 0, kills: 0, graceLeft: ENC_GRACE, inDungeon: false,
           clock: 1230, weather: "clear", weatherLeft: 70}; // the story starts at half past eight, under stars
 }

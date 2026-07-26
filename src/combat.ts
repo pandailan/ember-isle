@@ -73,6 +73,19 @@ export function cmdMenu(title: string, btns: CmdBtn[]): void {
   }
 }
 
+/** Which menu the local player is looking at, so a viewport swipe knows
+    whether it can stand in for "Attack → that one". */
+let menuKind: "root" | "pick" | "other" = "other";
+
+/** A flick at a foe in the viewport: strike them with the acting member. */
+export function combatSwipeStrike(i: number): void {
+  if (!fighting || !choiceResolve) return;
+  const e = combat.enemies[i];
+  if (!e || e.hp <= 0) return;
+  if (menuKind === "root") { sfx("tap"); choose({t: "swipe", i}); }
+  else if (menuKind === "pick") { sfx("tap"); choose({t: "pick", i}); }
+}
+
 async function ask(idx: number, title: string, btns: CmdBtn[]): Promise<unknown> {
   if (isRemoteSeat(idx)) {
     $("cmd-title").textContent = `${state.party[idx].name} — your companion decides…`;
@@ -160,14 +173,18 @@ async function collectCommands(): Promise<PlayerCmd[]> {
     let done = false;
     while (!done) {
       const usable = spellsOf(m).filter(s => m.mp >= spellCost(m, SPELLS[s]));
-      const c = await ask(idx, `${m.name} — your move`, [
+      menuKind = "root";
+      const c = await ask(idx, `${m.name} — your move (or flick at a foe)`, [
         {t: "Attack", v: {t: "atk"}},
         {t: "Spell / Art", v: {t: "sp"}, dis: !usable.length},
         {t: `Potion (${state.potions})`, v: {t: "pot"}, dis: state.potions <= 0},
         {t: "Defend", v: {t: "def"}},
         {t: combat.isBoss ? "Flee (no escape)" : "Flee", v: {t: "flee"}, wide: true, dis: combat.isBoss},
-      ]) as {t: string};
-      if (c.t === "atk") {
+      ]) as {t: string; i?: number};
+      menuKind = "other";
+      if (c.t === "swipe" && c.i != null) {
+        cmds.push({m, act: "atk", t: c.i}); done = true;
+      } else if (c.t === "atk") {
         const t = await pickEnemy(idx); if (t == null) continue;
         cmds.push({m, act: "atk", t}); done = true;
       } else if (c.t === "sp") {
@@ -209,8 +226,10 @@ async function pickEnemy(idx: number): Promise<number | null> {
   const opts = combat.enemies.map((e, i) => ({e, i})).filter(o => o.e.hp > 0)
     .map(o => ({t: `${o.e.n} · ${o.e.hp}`, v: {t: "pick", i: o.i}}));
   if (opts.length === 1) return (opts[0].v as {i: number}).i;
-  const c = await ask(idx, "Strike whom?",
+  menuKind = "pick";
+  const c = await ask(idx, "Strike whom? (or flick at them)",
     (opts as CmdBtn[]).concat([{t: "Back", v: {t: "back"}, wide: true}])) as {t: string; i?: number};
+  menuKind = "other";
   return c.t === "back" || c.i == null ? null : c.i;
 }
 async function pickAlly(idx: number, fallen: boolean): Promise<number | null> {

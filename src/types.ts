@@ -87,6 +87,8 @@ export interface GameState {
   binder: TCard[];
   /** Outdoor map layout version, so saves survive redesigns of the wilds. */
   mapsV?: number;
+  /** Landmark cells already visited and claimed ("level:x,y"). */
+  landmarks?: string[];
   /** A vault opened by a Torn Map Page: its generated map and the way home. */
   vault?: {map: string[]; ret: {level: number; x: number; y: number; dir: Dir}};
   /** Co-op lending bookkeeping (host side): guest-owned card ids currently in

@@ -4,13 +4,13 @@ import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
 import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID, ITEMS, RELICS, EVENTS, AGGRO, AGGRO_DEF, AGGRO_COOL } from "./data";
-import { groundLevelAt, hasElevation } from "./terrain";
+import { groundLevelAt, hasElevation, landmarkAt, landmarkHash } from "./terrain";
 import { vaultLoot, leaveVault, openBinder } from "./binder";
 import { makeTCard } from "./cards";
 import { findCarrier } from "./items";
 import { potionHeal } from "./traits";
 import { spawnMobs } from "./cards";
-import { view, amap, renderView } from "./render";
+import { view, amap, renderView, foeAtX } from "./render";
 import { net } from "./net";
 import { setScene, setWeatherAudio, setDaylight, sfx } from "./audio";
 import { phaseName, hourOf, WEATHER_MSGS, PHASE_MSGS } from "./daytime";
@@ -286,7 +286,64 @@ async function onEnterCell(raw: string): Promise<void> {
     app.startCombat(["boss"], true);
     return;
   }
+  if (raw === ".") visitLandmark();
   // no unseen ambushes: every fight in these caves walks on visible feet
+}
+
+/** Standing where older hands built something: each landmark rewards its
+    first visit, once per save. */
+function visitLandmark(): void {
+  const lm = landmarkAt(state.level, state.x, state.y);
+  if (!lm) return;
+  const key = state.level + ":" + state.x + "," + state.y;
+  const claimed = (state.landmarks ??= []);
+  if (claimed.includes(key)) return;
+  claimed.push(key);
+  const h = landmarkHash(state.x, state.y);
+  if (lm === "watchtower") {
+    // the crown shows the land: a wide sweep of the map opens
+    const m = MAPS[state.level];
+    const arr = (state.visited[state.level] ??= []);
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const x = state.x + dx, y = state.y + dy;
+      if (y < 0 || y >= m.length || x < 0 || x >= m[0].length) continue;
+      const k = x + "," + y;
+      if (!arr.includes(k)) arr.push(k);
+    }
+    sfx("stairs");
+    dlog("You climb the hollow stair to the broken crown. The land lays itself out below.");
+    amap.classList.add("on");
+  } else if (lm === "stoneCircle") {
+    for (const m of state.party) if (!m.down) { m.hp = m.maxhp; m.mp = m.maxmp; }
+    sfx("fountain");
+    dlog("You step inside the ring. The stones hum an old warmth — the living are made whole.");
+    renderPlaques("dg-plaques");
+  } else if (lm === "barrow") {
+    const gold = 60 + (h % 41);
+    state.gold += gold;
+    const got = [gold + " gold"];
+    const carrier = findCarrier(state.party, "relic");
+    if (carrier) { carrier.items.push("relic"); got.push(`${ITEMS.relic.n} (${carrier.name})`); }
+    sfx("chest");
+    dlog(`You duck under the lintel. Grave-goods in the dark: ${got.join(", ")}.`);
+    if ((h >> 4) % 2 === 0) {
+      dlog("Behind you, bone scrapes stone — the sleepers want it back.");
+      window.setTimeout(() => { // unless another fight found you first
+        if (!fightingNow()) app.startCombat(["ske", "ske"], false);
+      }, 650);
+    }
+  } else if (lm === "wreck") {
+    const gold = 30 + (h % 31);
+    state.gold += gold; state.potions += 2;
+    sfx("chest");
+    dlog(`You pick through the hull's ribs — ${gold} gold in a rotted purse, and 2 stoppered potions.`);
+  } else if (lm === "ruin") {
+    const gold = 10 + (h % 21);
+    state.gold += gold;
+    sfx("tap");
+    dlog(`You turn over the old stones. Someone's small hoard: ${gold} gold.`);
+  }
+  updateHUD(); save(); renderView();
 }
 
 export function usePotionField(): void {
@@ -352,8 +409,15 @@ export function bindDungeonControls(): void {
   }, {passive: true});
   view.addEventListener("touchend", e => {
     if (performance.now() - tst > 500) return; // a lingering finger is not a flick
-    const dx = e.changedTouches[0].clientX - tsx, dy = e.changedTouches[0].clientY - tsy;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - tsx, dy = t.clientY - tsy;
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 26) return;
+    if (fightingNow()) { // flick at a foe: strike them
+      const r = view.getBoundingClientRect();
+      const i = foeAtX((t.clientX - r.left) / r.width);
+      if (i != null) app.combatSwipe(i);
+      return;
+    }
     if (Math.abs(dx) > Math.abs(dy)) doTurn(dx > 0 ? 1 : -1); else doStep(dy > 0);
   }, {passive: true});
 }

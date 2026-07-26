@@ -63,6 +63,20 @@ let combatFoes: FoeView[] | null = null;
 let foeSprites: FoeSprite[] = [];
 let pops3d: {sp: THREE.Sprite; t: number}[] = [];
 
+/** Which living foe a viewport point (0..1 across) points at, if any. */
+export function foeIndexAtX(frac: number): number | null {
+  if (!camera || !foeSprites.length) return null;
+  const v = new THREE.Vector3();
+  let best: number | null = null, bd = 0.3;
+  for (let i = 0; i < foeSprites.length; i++) {
+    if (combatFoes?.[i] && combatFoes[i].hp <= 0) continue;
+    v.copy(foeSprites[i].sp.position).project(camera);
+    const d = Math.abs((v.x + 1) / 2 - frac);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
 export function showCombat(foes: FoeView[] | null): void {
   combatFoes = foes;
   if (!foes) {

@@ -9,7 +9,7 @@ import {
   enterDungeon, enterWalk, backToDungeon, turn, step, usePotionField,
   bindDungeonControls, rescueParty, combatWon, combatFled, dlog,
 } from "./dungeon";
-import { startCombat, combatSnapshot, adoptCombat } from "./combat";
+import { startCombat, combatSnapshot, adoptCombat, combatSwipeStrike } from "./combat";
 import { startRenderLoop, renderTitle, bootRenderer } from "./render";
 import { initCoop } from "./coop";
 import { openTradePost, bindTrade } from "./trade";
@@ -28,6 +28,7 @@ app.turn = turn;
 app.step = step;
 app.usePotionField = usePotionField;
 app.combatSnapshot = combatSnapshot;
+app.combatSwipe = combatSwipeStrike;
 app.openTrade = openTradePost;
 app.combatWon = combatWon;
 app.combatFled = combatFled;

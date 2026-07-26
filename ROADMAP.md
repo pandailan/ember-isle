@@ -139,6 +139,16 @@
   ignored), the movement diamond sits under the left thumb, and Map, Cards,
   Potion, and Save fan out in a quarter-circle arc under the right thumb.
 
+- **Flick to strike & landmarks that give back** — in combat, flicking the
+  viewport at a foe strikes them with the acting member (works on the root
+  menu and on any "strike whom?" pick, including spell targets); the foe
+  under your finger is found by projecting the staged sprites to the screen,
+  and flicks that point at no one are ignored. Landmarks reward their first
+  visit, once per save: the watchtower's crown opens a wide sweep of the
+  automap, the stone circle mends the living to full, barrows hold
+  grave-gold and a relic — though the sleepers may want it back — wrecks
+  yield salvage and potions, and ruins hide small hoards.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

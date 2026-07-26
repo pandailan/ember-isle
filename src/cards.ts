@@ -233,6 +233,7 @@ export function migrateState(s: GameState & {version?: number}): GameState {
     s.mobs[4] = s.mobs[4] ?? spawnMobs(4); // and later, the cove
   }
   s.binder = s.binder ?? [];
+  s.landmarks = s.landmarks ?? [];
   // the wilds were widened after some saves were written: relocate what no longer fits
   if ((s.mapsV ?? 1) < 2) {
     for (const lvl of [3, 4]) {

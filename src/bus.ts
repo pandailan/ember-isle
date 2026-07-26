@@ -28,6 +28,8 @@ export interface AppBus {
   combatFled(): void;
   /** Host migration: rebuild a synced fight locally and carry on. */
   adoptCombat(enemies: EnemyInst[]): void;
+  /** A viewport flick at foe i while a combat menu is open: strike them. */
+  combatSwipe(i: number): void;
   /** Character sheet overlay; atTavern enables bench/march swaps. */
   openCard(id: string, atTavern?: boolean): void;
 }

@@ -67,3 +67,23 @@ export function visionRadius(level: number, x: number, y: number): number {
   const h0 = groundLevelAt(level, x + 0.5, y + 0.5);
   return h0 > 0.24 ? 3 : h0 > 0.15 ? 2 : 1;
 }
+
+/* ---------- landmarks as game data ---------- */
+/** Prop ids that count as visitable landmarks (must exist in ASSETS). */
+const LANDMARKS = new Set(["watchtower", "stoneCircle", "barrow", "wreck", "ruin"]);
+
+/** Which landmark stands on this floor cell, replaying the renderer's
+    first-match placement rules — or null for plain ground. */
+export function landmarkAt(level: number, x: number, y: number): string | null {
+  const m = MAPS[level];
+  if (!m || m[y]?.[x] !== ".") return null;
+  const h = cellHash(x, y);
+  for (const place of biomeFor(level).floorProps) {
+    if (h % place.mod !== place.rem) continue;
+    return LANDMARKS.has(place.id) ? place.id : null;
+  }
+  return null;
+}
+
+/** The same cell hash the renderer seeds props with, for landmark flavor rolls. */
+export function landmarkHash(x: number, y: number): number { return cellHash(x, y); }

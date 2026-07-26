@@ -104,6 +104,10 @@ export function combatView(enemies: {key: string; hp: number; maxhp: number; bos
 export function combatPop(idx: number, text: string, cls: string): void {
   s3d?.combatPop(idx, text, cls);
 }
+/** Which living foe a viewport point (0..1 across) points at, if any. */
+export function foeAtX(frac: number): number | null {
+  return s3d?.foeIndexAtX(frac) ?? null;
+}
 
 /* ---------- monster art (portraits + world sprites) ---------- */
 const spriteCache: Record<string, HTMLCanvasElement> = {};
