@@ -1,5 +1,6 @@
 import type { GameState, Member, Dir } from "./types";
 import { MAPS, ABONUS, SAVE_KEY, ENC_GRACE } from "./data";
+import { visionRadius } from "./terrain";
 import { migrateState, cleanupLend, spawnMobs } from "./cards";
 import { worldCtx } from "./traits";
 import type { Mob } from "./types";
@@ -59,8 +60,15 @@ export function cellAt(lvl: number, x: number, y: number): string {
   return c;
 }
 
+/** Reveal the cell underfoot — and, from high ground outdoors, the land around it. */
 export function markVisited(): void {
-  const k = state.x + "," + state.y;
   const arr = (state.visited[state.level] ??= []);
-  if (!arr.includes(k)) arr.push(k);
+  const m = MAPS[state.level];
+  const r = Math.max(1, visionRadius(state.level, state.x, state.y)) - 1;
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const x = state.x + dx, y = state.y + dy;
+    if (y < 0 || y >= m.length || x < 0 || x >= m[0].length) continue;
+    const k = x + "," + y;
+    if (!arr.includes(k)) arr.push(k);
+  }
 }

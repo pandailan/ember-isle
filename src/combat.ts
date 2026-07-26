@@ -1,5 +1,6 @@
 import type { Member, EnemyInst, CombatState, PlayerCmd } from "./types";
-import { CLASSES, SPELLS, ENEMIES, ENC_GRACE, ITEMS } from "./data";
+import { CLASSES, SPELLS, ENEMIES, ENC_GRACE, ITEMS, DIRV } from "./data";
+import { groundLevelAt } from "./terrain";
 import { findCarrier } from "./items";
 import { grantBossCard } from "./binder";
 import { state, save, alive, defOf, xpNeed } from "./state";
@@ -87,7 +88,15 @@ async function ask(idx: number, title: string, btns: CmdBtn[]): Promise<unknown>
   return awaitChoice();
 }
 
+/** Height of the party's cell minus the foes' cell — set once per fight.
+    Positive: we hold the high ground; negative: they do. */
+let hgtAdv = 0;
+const HGT = 0.045; // slope steep enough to matter — roughly the steepest quarter of moor edges
+
 export function startCombat(groupKeys: string[], isBoss: boolean): void {
+  const [fx, fy] = DIRV[state.dir];
+  hgtAdv = groundLevelAt(state.level, state.x + 0.5, state.y + 0.5)
+         - groundLevelAt(state.level, state.x + fx + 0.5, state.y + fy + 0.5);
   combat = {
     enemies: groupKeys.map((k, i) => {
       const d = ENEMIES[k];
@@ -106,6 +115,8 @@ export function startCombat(groupKeys: string[], isBoss: boolean): void {
   renderFoes(); renderPlaques("dg-plaques");
   $("combat-log").innerHTML = ""; combat.log = [];
   clog(isBoss ? "“Climbers. The Ember was promised bones.”" : "Steel out — they have your scent.");
+  if (hgtAdv > HGT) clog("You hold the high ground — your blows fall harder.");
+  else if (hgtAdv < -HGT) clog("They hold the high ground above you.");
   show("scr-dungeon"); // the fight happens where you stand
   void runCombat();
 }
@@ -211,6 +222,13 @@ async function pickAlly(idx: number, fallen: boolean): Promise<number | null> {
   return c.t === "back" || c.i == null ? null : c.i;
 }
 
+/** Melee power on a slope: downhill blows land harder, uphill ones weaker. */
+function slopeAtk(atk: number, player: boolean): number {
+  const a = player ? hgtAdv : -hgtAdv;
+  if (a > HGT) return atk * (player ? 1.15 : 1.1);
+  if (a < -HGT) return atk * (player ? 0.9 : 0.95);
+  return atk;
+}
 function physDmg(atk: number, def: number, critCh: number): [number, boolean] {
   let d = Math.max(1, Math.round(atk * (0.85 + rnd() * 0.3) - def * 0.5));
   if (rnd() < critCh) { d = Math.round(d * 2); return [d, true]; }
@@ -235,7 +253,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
   const m = c.m;
   if (c.act === "atk") {
     const e = liveEnemy(c.t!); if (!e) return;
-    const [d, crit] = physDmg(atkOf(m), e.def, critOf(m));
+    const [d, crit] = physDmg(slopeAtk(atkOf(m), true), e.def, critOf(m));
     sfx(crit ? "crit" : "hit");
     clog(`${m.name} strikes ${e.n} for ${d}${crit ? " — a telling blow!" : "."}`);
     pop("e", enemyIdx(e), `-${d}`, crit ? "crit" : "");
@@ -255,7 +273,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
       for (const e of targets) {
         for (let h = 0; h < (def.hits ?? 1); h++) {
           if (e.hp <= 0) break;
-          const [d, crit] = physDmg(atkOf(m) * (def.mult ?? 1), e.def, critOf(m) + (def.critBonus ?? 0));
+          const [d, crit] = physDmg(slopeAtk(atkOf(m), true) * (def.mult ?? 1), e.def, critOf(m) + (def.critBonus ?? 0));
           clog(`— ${e.n} takes ${d}${crit ? ", a telling blow!" : "."}`);
           pop("e", enemyIdx(e), `-${d}`, crit ? "crit" : "");
           hitEnemy(e, d);
@@ -350,7 +368,7 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
   }
   sfx("hit");
   const effDef = e.pierce ? Math.floor(defOf(t) / 2) : defOf(t);
-  const [raw] = physDmg(e.atk, effDef, 0.08);
+  const [raw] = physDmg(slopeAtk(e.atk, false), effDef, 0.08);
   const before = t.hp;
   hurtMember(t, raw);
   pop("p", memberIdx(t), `-${before - t.hp}`, "");

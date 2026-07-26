@@ -13,58 +13,14 @@ import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome
 import { ASSETS, FEATURE_ASSET, bindAssetFx } from "./assets3d";
 import { net } from "./net";
 import { reduceMotion, rnd } from "./util";
+import { groundLevelAt, hasElevation } from "./terrain";
 import { hourOf } from "./daytime";
 import { sfx } from "./audio";
 
 /* ---------- deterministic per-cell hash (matches the old renderer) ---------- */
 const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
 
-/* ---------- terrain elevation: the outdoors rolls, and falls to the sea ---------- */
-const latt = (ix: number, iz: number) => ((cellHash(ix + 101, iz + 57) >>> 3) % 997) / 997;
-const smoothT = (t: number) => t * t * (3 - 2 * t);
-function vnoise(x: number, z: number): number {
-  const ix = Math.floor(x), iz = Math.floor(z);
-  const sx = smoothT(x - ix), sz = smoothT(z - iz);
-  const a = latt(ix, iz), b = latt(ix + 1, iz), c = latt(ix, iz + 1), d = latt(ix + 1, iz + 1);
-  const top = a + (b - a) * sx, bot = c + (d - c) * sx;
-  return top + (bot - top) * sz;
-}
-
-let elevCorners: Float32Array | null = null; // lattice of corner heights, (mw+1)×(mh+1)
-let elevW = 0, elevH = 0;
-const ELEV_AMP: Record<string, number> = {harbor: 0.06, moor: 0.3, cove: 0.22};
-
-function computeElevation(map: string[], biome: Biome): void {
-  const amp = biome.sky ? ELEV_AMP[biome.id] ?? 0.25 : 0;
-  if (!amp) { elevCorners = null; return; }
-  const mw = map[0].length, mh = map.length;
-  elevW = mw + 1; elevH = mh + 1;
-  elevCorners = new Float32Array(elevW * elevH);
-  const isWater = (x: number, y: number) => (map[y]?.[x] ?? "~") === "~";
-  for (let cy = 0; cy < elevH; cy++) for (let cx = 0; cx < elevW; cx++) {
-    let wet = false, near = false;
-    for (let dy = -1; dy <= 0; dy++) for (let dx = -1; dx <= 0; dx++) {
-      if (isWater(cx + dx, cy + dy)) wet = true;
-    }
-    for (let dy = -2; dy <= 1; dy++) for (let dx = -2; dx <= 1; dx++) {
-      if (isWater(cx + dx, cy + dy)) near = true;
-    }
-    elevCorners[cy * elevW + cx] = wet ? 0 : vnoise(cx * 0.42, cy * 0.42) * amp * (near ? 0.35 : 1);
-  }
-}
-
-/** Ground height at any world point; matches the displaced floor mesh exactly. */
-function groundHAt(wx: number, wz: number): number {
-  if (!elevCorners) return 0;
-  const x = Math.min(Math.max(wx, 0), elevW - 1.001);
-  const z = Math.min(Math.max(wz, 0), elevH - 1.001);
-  const ix = Math.floor(x), iz = Math.floor(z);
-  const fxq = x - ix, fzq = z - iz;
-  const i = iz * elevW + ix;
-  const a = elevCorners[i], b = elevCorners[i + 1], c = elevCorners[i + elevW], d = elevCorners[i + elevW + 1];
-  const top = a + (b - a) * fxq, bot = c + (d - c) * fxq;
-  return top + (bot - top) * fzq;
-}
+const groundHAt = (wx: number, wz: number): number => groundLevelAt(state.level, wx, wz);
 
 /* ---------- module state ---------- */
 let renderer: THREE.WebGLRenderer | null = null;
@@ -501,8 +457,6 @@ export function buildLevel(): void {
   playerLight.color.set(isMoor ? 0xc3d2e6 : town ? 0xb8c4e6 : 0xffc478);
   playerLight.intensity = town ? 3.2 : 13;
 
-  computeElevation(map, biome);
-
   // materials from the biome bakery
   const albedos = biomeTextures(biome);
   const normals = biomeNormalMaps(biome);
@@ -515,7 +469,7 @@ export function buildLevel(): void {
   const ftex = tex(biomeFloorTexture(biome), true);
   ftex.repeat.set(mw, mh);
   let floorGeo: THREE.BufferGeometry;
-  if (elevCorners) { // the ground rolls: one vertex per cell corner, lifted by the heightfield
+  if (hasElevation(level)) { // the ground rolls: one vertex per cell corner, lifted by the heightfield
     const pg = new THREE.PlaneGeometry(mw, mh, mw, mh);
     pg.rotateX(-Math.PI / 2);
     pg.translate(mw / 2, 0, mh / 2);

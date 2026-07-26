@@ -96,6 +96,14 @@
   clusters, pine stands, and ruins mark loose paths instead of corridor
   walls. Old saves relocate anything the new layouts displaced.
 
+- **High ground matters** — elevation is gameplay, not just scenery. The
+  height math lives in a renderer-independent module (`src/terrain.ts`)
+  shared by the 3D scene and the rules. Standing on a rise widens what the
+  automap reveals (up to a 5×5 sweep from a summit); fights on a slope tilt
+  the melee math — the side holding the high ground strikes ~15% harder and
+  the side below swings ~10% weaker, called out in the combat log when the
+  ground is steep enough to matter.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

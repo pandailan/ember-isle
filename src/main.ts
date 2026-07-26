@@ -14,6 +14,7 @@ import { startRenderLoop, renderTitle, bootRenderer } from "./render";
 import { initCoop } from "./coop";
 import { openTradePost, bindTrade } from "./trade";
 import { unlock, toggleMute, isMuted, setScene } from "./audio";
+import { groundLevelAt, visionRadius } from "./terrain";
 
 /* Wire the cross-screen bus (keeps the module graph acyclic). */
 app.openTown = openTown;
@@ -96,5 +97,5 @@ declare global { interface Window { __ei: unknown; } }
 window.__ei = {
   get state() { return state; },
   startCombat, enterDungeon, openTown, openTavern, save,
-  door: townDoorBump,
+  door: townDoorBump, groundLevelAt, visionRadius,
 };
