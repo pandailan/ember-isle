@@ -1,5 +1,6 @@
 import { app } from "./bus";
-import { state, setState, loadSave, save, alive } from "./state";
+import { state, setState, loadSave, save, alive, setSaveEnabled } from "./state";
+import { net } from "./net";
 import { show } from "./ui";
 import { $ } from "./util";
 import { openTown, townDoorBump, showEnding, bindTownScreens } from "./town";
@@ -8,7 +9,7 @@ import {
   enterDungeon, enterWalk, backToDungeon, turn, step, usePotionField,
   bindDungeonControls, rescueParty, combatWon, combatFled, dlog,
 } from "./dungeon";
-import { startCombat, combatSnapshot } from "./combat";
+import { startCombat, combatSnapshot, adoptCombat } from "./combat";
 import { startRenderLoop, renderTitle } from "./render";
 import { initCoop } from "./coop";
 import { openTradePost, bindTrade } from "./trade";
@@ -32,6 +33,7 @@ app.combatFled = combatFled;
 app.townDoor = townDoorBump;
 app.dlog = dlog;
 app.enterWalk = enterWalk;
+app.adoptCombat = adoptCombat;
 
 /* ============================== TITLE ============================== */
 function initTitle(): void {
@@ -47,7 +49,10 @@ function initTitle(): void {
 
 /* ============================== DEFEAT / ENDING ============================== */
 function bindEndScreens(): void {
+  // stepping out of a borrowed (adopted) world back into your own re-arms saving
+  const reclaimSaves = () => { if (net.role !== "guest") setSaveEnabled(true); };
   $("bt-dead-load").onclick = () => {
+    reclaimSaves();
     const s = loadSave();
     if (s) {
       setState(s);
@@ -59,9 +64,9 @@ function bindEndScreens(): void {
       if (state.inDungeon) enterDungeon(false); else openTown();
     } else { show("scr-title"); }
   };
-  $("bt-dead-title").onclick = () => show("scr-title");
+  $("bt-dead-title").onclick = () => { reclaimSaves(); show("scr-title"); };
   $("bt-end-continue").onclick = () => openTown("Vhalis breathes again. The caves below are quieter now — but not empty.");
-  $("bt-end-title").onclick = () => show("scr-title");
+  $("bt-end-title").onclick = () => { reclaimSaves(); show("scr-title"); };
 }
 
 /* ============================== AUDIO ============================== */

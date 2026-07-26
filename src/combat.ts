@@ -400,4 +400,19 @@ async function combatVictory(): Promise<void> {
   app.backToDungeon(null);
 }
 
-function combatDefeat(): void { sfx("defeat"); save(); show("scr-dead"); }
+function combatDefeat(): void {
+  sfx("defeat"); save();
+  $("bt-dead-load").style.display = ""; // may have been hidden while mirroring a host
+  show("scr-dead");
+}
+
+/** Host migration: the last synced fight, rebuilt and continued locally. */
+export function adoptCombat(enemies: EnemyInst[]): void {
+  const keys = enemies.map(e => e.key);
+  startCombat(keys, enemies.some(e => !!e.boss));
+  combat.enemies.forEach((e, i) => {
+    if (enemies[i]) { e.hp = enemies[i].hp; e.maxhp = enemies[i].maxhp; }
+  });
+  renderFoesData(combat.enemies);
+  clog("The link is severed — the whole line is yours to command now.");
+}

@@ -24,6 +24,12 @@
   gold sweetener. Three-step offer→accept→commit handshake (no rollbacks),
   wire-sanitized cards, decline/cancel paths, combat pre-empts bartering.
   Trust-based, as saves are local — the Phase 4 ledger hardens ownership.
+- **Host migration** — if the host drops (heartbeat detects within ~7s), the
+  guest adopts the expedition from its last synced snapshot and plays on
+  locally: mid-combat fights are rebuilt and continued, all four seats become
+  theirs, and their lent cards' XP and gold share keep merging into their own
+  save (which is never overwritten — unless they had no save, in which case
+  they inherit the world outright).
 
 ## Next
 

@@ -1,5 +1,5 @@
 import type { Dir, Mob } from "./types";
-import { state, save, cellAt, markVisited, allCards, mobAt } from "./state";
+import { state, save, cellAt, markVisited, allCards, mobAt, isSaveEnabled } from "./state";
 import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
@@ -227,7 +227,10 @@ export function bindDungeonControls(): void {
   };
   $("bt-save").onclick = () => {
     if (net.role === "guest") { dlog("Only the torchbearer keeps the map. (Your host saves.)"); return; }
-    save(); dlog("You scratch your progress into the map. (Saved.)");
+    save();
+    dlog(isSaveEnabled()
+      ? "You scratch your progress into the map. (Saved.)"
+      : "A borrowed expedition writes no maps — but your cards remember everything.");
   };
   document.addEventListener("keydown", (e: KeyboardEvent) => {
     if (!$("scr-dungeon").classList.contains("on")) return;

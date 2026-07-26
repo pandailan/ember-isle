@@ -26,6 +26,8 @@ export interface AppBus {
   /** Outcome hooks so the dungeon can settle the engaged mob. */
   combatWon(): void;
   combatFled(): void;
+  /** Host migration: rebuild a synced fight locally and carry on. */
+  adoptCombat(enemies: EnemyInst[]): void;
 }
 
 export const app = {} as AppBus;

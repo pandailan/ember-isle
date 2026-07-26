@@ -75,10 +75,12 @@ function applyUnlend(reason: string): void {
 
 /* ============================== GUEST SIDE ============================== */
 let guestActive = false;
+let adopted = false;                    // the host fell; this browser carries the expedition now
 let ownSave: GameState | null = null;   // the guest's real world, kept safe while mirroring
 let lentIds: string[] = [];
 let lastGoldOwed = 0;
 let lastMerge = "";
+let lastCombatView: {enemies: EnemyInst[]; log: string[]; title: string} | null = null;
 
 function guestMergeProgress(hostState: GameState): void {
   if (!ownSave || !lentIds.length) return;
@@ -182,10 +184,31 @@ function snapshot(): SyncMsg {
   };
 }
 
+/** The host is gone: the newest snapshot in `state` becomes a live, local game. */
+function adoptExpedition(): void {
+  if (!state || currentScreen === "scr-title") {
+    show("scr-title");
+    $("join-status").textContent = "The link was severed.";
+    return;
+  }
+  adopted = true;
+  guestActive = false;
+  if (!ownSave) setSaveEnabled(true); // a guest with no world of their own inherits this one
+  if (currentScreen === "scr-combat" && lastCombatView) {
+    app.adoptCombat(lastCombatView.enemies);
+  } else if (state.level === 0) {
+    app.openTown("The signal fire gutters out — the torch passes to you. The expedition is yours now.");
+  } else {
+    app.enterWalk("The link is severed — the torch passes to you. The expedition is yours to finish.");
+  }
+  save(); // persists only when the adopter had no world of their own
+}
+
 function applySync(m: SyncMsg): void {
   if (!m.state) return;
   guestMergeProgress(m.state);
   setState(m.state);
+  lastCombatView = m.combat;
   const scr = m.screen;
   if (isAtTradePost()) {
     // the post holds the screen — only a battle drags the guest away
@@ -260,7 +283,12 @@ const guestWorld: TradeWorld = {
 
 export function initCoop(): void {
   initTrade(() => net.role === "guest" ? guestWorld : hostWorld);
+  let mergeTick = 0;
   setInterval(() => {
+    // an adopted expedition merges its lent cards' progress home locally
+    if (adopted && ownSave && lentIds.length && state && ++mergeTick % 8 === 0) {
+      guestMergeProgress(state);
+    }
     if (net.role !== "host" || !state) return;
     // deferred loan changes wait for combat to end
     if (!inCombat()) {
@@ -291,10 +319,8 @@ export function initCoop(): void {
       }
     } else if (guestActive && !net.connected) {
       tradeLinkLost();
-      guestActive = false; setSaveEnabled(true);
-      ownSave = null; lentIds = []; lastGoldOwed = 0; lastMerge = "";
-      show("scr-title");
-      $("join-status").textContent = "The link was severed. Your cards remember what they learned.";
+      // ownSave and lentIds stay: the local merge keeps carrying progress home
+      adoptExpedition();
     }
   };
 
@@ -340,6 +366,7 @@ export function initCoop(): void {
     $("join-status").textContent = "Following the signal…";
     net.join(code, err => {
       if (err) { $("join-status").textContent = "No fire answers that code. Check it and try again."; return; }
+      adopted = false; lastMerge = ""; // a fresh link supersedes any old adoption
       offerLend();
     });
   };

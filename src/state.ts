@@ -26,6 +26,7 @@ export const xpNeed = (l: number) => l * l * 45;
 let saveEnabled = true;
 /** Guests mirror the host's state and must never clobber their own local save. */
 export function setSaveEnabled(b: boolean): void { saveEnabled = b; }
+export function isSaveEnabled(): boolean { return saveEnabled; }
 
 export function save(): void {
   if (!saveEnabled) return;
