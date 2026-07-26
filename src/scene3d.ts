@@ -47,6 +47,54 @@ let flameSprites: {sprite: THREE.Sprite; base: number; phase: number}[] = [];
 interface MobView { sprite: THREE.Sprite; shadow: THREE.Mesh; cur: THREE.Vector3; key: string; }
 let mobViews: MobView[] = [];
 
+/* ---------- in-world combat: foes square up in the corridor ---------- */
+interface FoeView { key: string; hp: number; maxhp: number; boss?: boolean; }
+interface FoeSprite {
+  sp: THREE.Sprite; bar: THREE.Sprite; barCv: HTMLCanvasElement; barTex: THREE.CanvasTexture;
+  lastHp: number; flash: number; key: string;
+}
+let combatFoes: FoeView[] | null = null;
+let foeSprites: FoeSprite[] = [];
+let pops3d: {sp: THREE.Sprite; t: number}[] = [];
+
+export function showCombat(foes: FoeView[] | null): void {
+  combatFoes = foes;
+  if (!foes) {
+    for (const f of foeSprites) { scene.remove(f.sp); scene.remove(f.bar); }
+    foeSprites = [];
+    for (const p of pops3d) scene.remove(p.sp);
+    pops3d = [];
+  }
+}
+
+const POP_HUES: Record<string, string> = {crit: "#ffb44c", spell: "#8fc4e8", heal: "#9fd06a", "": "#e8d9b0"};
+export function combatPop(idx: number, text: string, cls: string): void {
+  const anchor = foeSprites[idx];
+  if (!anchor || !scene) return;
+  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 48;
+  const c = cv.getContext("2d")!;
+  c.font = "bold 30px Georgia, serif"; c.textAlign = "center"; c.textBaseline = "middle";
+  c.strokeStyle = "rgba(0,0,0,.8)"; c.lineWidth = 5; c.strokeText(text, 64, 24);
+  c.fillStyle = POP_HUES[cls] ?? POP_HUES[""]; c.fillText(text, 64, 24);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: t, transparent: true, depthWrite: false}));
+  sp.position.copy(anchor.sp.position).add(new THREE.Vector3((rnd() - 0.5) * 0.14, 0.26, 0));
+  sp.scale.set(0.42, 0.16, 1);
+  scene.add(sp);
+  pops3d.push({sp, t: 0});
+  anchor.flash = 1; // the blow lands visibly
+}
+
+function drawFoeBar(f: FoeSprite, hp: number, maxhp: number): void {
+  const c = f.barCv.getContext("2d")!;
+  c.clearRect(0, 0, 64, 10);
+  c.fillStyle = "rgba(10,7,5,.8)"; c.fillRect(0, 0, 64, 10);
+  const k = Math.max(0, hp / maxhp);
+  c.fillStyle = k > 0.5 ? "#8fae6a" : k > 0.25 ? "#e0b24c" : "#c8502f";
+  c.fillRect(1.5, 1.5, 61 * k, 7);
+  f.barTex.needsUpdate = true;
+}
+
 /* signpost labels fade out when you stand under them */
 let labels: {sprite: THREE.Sprite; pos: THREE.Vector3}[] = [];
 
@@ -1127,6 +1175,59 @@ export function frame(dt: number): void {
     const lit = net.role === "host" || net.connected;
     fireGroup.lit.visible = lit; fireGroup.cold.visible = !lit;
   }
+  // an active fight owns the corridor: foes fan out one cell ahead
+  if (combatFoes) {
+    const fwd = new THREE.Vector3(-Math.sin(camera.rotation.y), 0, -Math.cos(camera.rotation.y));
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const centre = camera.position.clone().add(fwd.clone().multiplyScalar(1.45));
+    while (foeSprites.length < combatFoes.length) {
+      const i = foeSprites.length;
+      const fv = combatFoes[i];
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({transparent: true}));
+      if (spriteSource) {
+        const t = new THREE.CanvasTexture(spriteSource(fv.boss ? "boss" : fv.key));
+        t.colorSpace = THREE.SRGBColorSpace;
+        sp.material.map = t; sp.material.needsUpdate = true;
+      }
+      const barCv = document.createElement("canvas"); barCv.width = 64; barCv.height = 10;
+      const barTex = new THREE.CanvasTexture(barCv);
+      const bar = new THREE.Sprite(new THREE.SpriteMaterial({map: barTex, transparent: true, depthWrite: false}));
+      bar.scale.set(0.4, 0.062, 1);
+      scene.add(sp); scene.add(bar);
+      const fs: FoeSprite = {sp, bar, barCv, barTex, lastHp: fv.hp, flash: 0, key: fv.key};
+      drawFoeBar(fs, fv.hp, fv.maxhp);
+      foeSprites.push(fs);
+    }
+    const n = combatFoes.length;
+    for (let i = 0; i < n; i++) {
+      const fv = combatFoes[i], fs = foeSprites[i];
+      const lateral = n === 1 ? 0 : (i / (n - 1) - 0.5) * Math.min(0.95, 0.42 * n);
+      const depth = (i % 2) * 0.28;
+      const base = fv.boss ? 1.0 : 0.62;
+      const pos = centre.clone().add(right.clone().multiplyScalar(lateral)).add(fwd.clone().multiplyScalar(depth));
+      const alive2 = fv.hp > 0;
+      const bob = reduceMotion || !alive2 ? 0 : Math.sin(animT * 2.4 + i * 2.2) * 0.02;
+      fs.sp.position.set(pos.x, (fv.boss ? 0.52 : 0.36) + bob, pos.z);
+      if (fv.hp < fs.lastHp) fs.flash = 1;
+      fs.lastHp = fv.hp;
+      if (!reduceMotion) fs.flash = Math.max(0, fs.flash - dt * 3.2);
+      else fs.flash = 0;
+      fs.sp.scale.setScalar(base * (1 + fs.flash * 0.18));
+      fs.sp.material.color.setRGB(1, 1 - fs.flash * 0.55, 1 - fs.flash * 0.55);
+      fs.sp.material.opacity = alive2 ? 1 : 0.12; // the fallen fade to shade
+      drawFoeBar(fs, fv.hp, fv.maxhp);
+      fs.bar.position.set(pos.x, (fv.boss ? 1.06 : 0.68), pos.z);
+      fs.bar.visible = alive2;
+    }
+  }
+  // floating damage numbers rise and fade
+  for (let i = pops3d.length - 1; i >= 0; i--) {
+    const p = pops3d[i];
+    p.t += dt;
+    p.sp.position.y += dt * 0.45;
+    p.sp.material.opacity = Math.max(0, 1 - p.t / 0.95);
+    if (p.t > 0.95) { scene.remove(p.sp); pops3d.splice(i, 1); }
+  }
   // mobs: sprite pool reconciled to state, gliding toward their cells
   const mobs = state.mobs?.[state.level] ?? [];
   while (mobViews.length < mobs.length) {
@@ -1139,7 +1240,7 @@ export function frame(dt: number): void {
   }
   for (let i = 0; i < mobViews.length; i++) {
     const mv = mobViews[i], mob = mobs[i];
-    if (!mob) { mv.sprite.visible = false; mv.shadow.visible = false; continue; }
+    if (!mob || combatFoes) { mv.sprite.visible = false; mv.shadow.visible = false; continue; }
     if (mv.key !== mob.key && spriteSource) {
       mv.key = mob.key;
       const t = new THREE.CanvasTexture(spriteSource(mob.key));

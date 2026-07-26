@@ -203,7 +203,14 @@
   .foe .fname{font-size:.76rem; text-align:center; font-variant:small-caps; letter-spacing:.05em; line-height:1.2;}
   .foe.dead{opacity:.25; filter:grayscale(1);}
   .foe.boss{width:160px;} .foe.boss .portrait{width:88px; height:88px;}
-  #combat-log{min-height:4.2em;}
+  #combat-log{min-height:4.2em; border:1px solid var(--line-soft); border-radius:6px;
+    background:var(--panel); padding:7px 11px; font-size:.88rem;}
+  #combat-panel{display:flex; flex-direction:column; gap:10px;}
+  #combat-panel[hidden]{display:none;}
+  #combat-panel h3{text-align:center; font-size:1.05rem; color:var(--ember); margin:0;
+    font-variant:small-caps; letter-spacing:.1em;}
+  body.fighting .dpad{display:none;}
+  body.fighting #log{display:none;}
   #cmdbar{display:flex; flex-direction:column; gap:8px;}
   #cmd-title{font-size:.85rem; color:var(--amber); font-variant:small-caps; letter-spacing:.12em; text-align:center;}
   #cmd-btns{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
@@ -342,6 +349,14 @@
     <div class="compass"><span id="pos-label"></span><span>Facing <b id="dir-label">N</b></span></div>
     <div id="log"></div>
     <div class="plaques" id="dg-plaques"></div>
+    <div id="combat-panel" hidden>
+      <h3 id="combat-title"></h3>
+      <div id="combat-log"></div>
+      <div id="cmdbar">
+        <div id="cmd-title"></div>
+        <div id="cmd-btns"></div>
+      </div>
+    </div>
     <div class="dpad">
       <button class="small" id="bt-map">Map</button>
       <button id="bt-left" aria-label="Turn left">⟲</button>
@@ -357,16 +372,10 @@
     </div>
   </div>
 
-  <!-- COMBAT -->
-  <div class="screen" id="scr-combat">
-    <h3 id="combat-title" style="text-align:center;">Ambush!</h3>
-    <div class="foes" id="foes"></div>
-    <div id="combat-log" class="" style="border:1px solid var(--line-soft); border-radius:6px; background:var(--panel); padding:7px 11px; font-size:.88rem; min-height:4.2em;"></div>
-    <div class="plaques" id="cb-plaques"></div>
-    <div id="cmdbar">
-      <div id="cmd-title"></div>
-      <div id="cmd-btns"></div>
-    </div>
+  <!-- COMBAT (stub: fights are staged inside the walking view) -->
+  <div class="screen" id="scr-combat" hidden>
+    <div class="foes" id="foes" hidden></div>
+    <div class="plaques" id="cb-plaques" hidden></div>
   </div>
 
   <!-- DEFEAT -->

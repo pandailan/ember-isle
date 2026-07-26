@@ -108,10 +108,20 @@ export function enterWalk(msg: string | null): void {
   renderView();
 }
 
-export function turn(d: number): void { state.dir = ((state.dir + d + 4) % 4) as Dir; renderView(); }
+const fightingNow = () => document.body.classList.contains("fighting");
+
+export function turn(d: number): void {
+  if (fightingNow()) return;
+  state.dir = ((state.dir + d + 4) % 4) as Dir; renderView();
+}
 
 function engage(mob: Mob): void {
   engagedMob = mob;
+  // square up: turn to face where the attack comes from
+  if (Math.abs(mob.x - state.x) + Math.abs(mob.y - state.y) === 1) {
+    state.dir = (mob.x > state.x ? 1 : mob.x < state.x ? 3 : mob.y > state.y ? 2 : 0) as Dir;
+    renderView();
+  }
   sfx("combat");
   dlog(`${ENEMIES[mob.key]?.n ?? "Something"} lunges from the dark!`);
   app.startCombat(mob.group, false);
@@ -148,6 +158,7 @@ function moveMobs(): void {
 }
 
 export function step(back: boolean, byGuest = false): void {
+  if (fightingNow()) return; // no wandering off mid-melee
   const f = DIRV[state.dir], s = back ? -1 : 1;
   const nx = state.x + f[0] * s, ny = state.y + f[1] * s;
   const cell = cellAt(state.level, nx, ny);

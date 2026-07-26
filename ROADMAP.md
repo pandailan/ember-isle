@@ -73,6 +73,13 @@
   sealed packs; the binder UI works from the tavern and the walking view; the
   Trading Post now trades any card kind over the same handshake.
 
+- **In-world combat** — no more mode switch: fights are staged inside the
+  first-person view. Foes fan out one cell ahead with floating HP bars, flinch
+  and flash when struck, fade to shades when they fall; damage numbers rise in
+  the world; the command bar replaces the d-pad below the view; the weather,
+  fireflies, and sea stay visible behind the fight. Same turn engine, same
+  co-op seats and host-migration adoption — only the stage changed.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

@@ -4,9 +4,9 @@ import { SAVE_KEY } from "./data";
 import { sanitizeCard, cleanupLend } from "./cards";
 import { app } from "./bus";
 import { net } from "./net";
-import { show, currentScreen, renderPlaques, renderFoesData, redrawCombatLog } from "./ui";
+import { show, currentScreen, renderPlaques, redrawCombatLog } from "./ui";
 import { $ } from "./util";
-import { renderView } from "./render";
+import { renderView, combatView } from "./render";
 import { getLogLines, setLogLines, dlog, updateHUD } from "./dungeon";
 import { openPicker } from "./tavern";
 import { sfx, setWeatherAudio } from "./audio";
@@ -46,7 +46,7 @@ export function clearRemoteMenu(): void {
 let pendingLend: Member[] | null = null;
 let pendingUnlend = false;
 
-function inCombat(): boolean { return currentScreen === "scr-combat"; }
+function inCombat(): boolean { return app.combatSnapshot() !== null; }
 
 function applyLend(cards: Member[]): void {
   if (state.coopGuestIds?.length) return; // one loan at a time
@@ -195,7 +195,7 @@ function adoptExpedition(): void {
   adopted = true;
   guestActive = false;
   if (!ownSave) setSaveEnabled(true); // a guest with no world of their own inherits this one
-  if (currentScreen === "scr-combat" && lastCombatView) {
+  if (lastCombatView) {
     app.adoptCombat(lastCombatView.enemies);
   } else if (state.level === 0) {
     app.openTown("The signal fire gutters out — the torch passes to you. The expedition is yours now.");
@@ -214,16 +214,24 @@ function applySync(m: SyncMsg): void {
   const scr = m.screen;
   if (isAtTradePost()) {
     // the post holds the screen — only a battle drags the guest away
-    if (scr === "scr-combat" && m.combat) forceLeaveForCombat();
+    if (m.combat) forceLeaveForCombat();
     else return;
   }
   if (scr === "scr-dungeon") {
     if (currentScreen !== "scr-dungeon") show("scr-dungeon");
-    renderPlaques("dg-plaques"); setLogLines(m.logLines || []); updateHUD(); renderView();
-  } else if (scr === "scr-combat" && m.combat) {
-    if (currentScreen !== "scr-combat") show("scr-combat");
-    $("combat-title").textContent = m.combat.title;
-    renderFoesData(m.combat.enemies); renderPlaques("cb-plaques"); redrawCombatLog(m.combat.log);
+    renderPlaques("dg-plaques"); updateHUD(); renderView();
+    if (m.combat) { // the host's fight, mirrored into the same corridor
+      document.body.classList.add("fighting");
+      $("combat-panel").hidden = false;
+      $("combat-title").textContent = m.combat.title;
+      combatView(m.combat.enemies);
+      redrawCombatLog(m.combat.log);
+    } else {
+      document.body.classList.remove("fighting");
+      $("combat-panel").hidden = true;
+      combatView(null);
+      setLogLines(m.logLines || []);
+    }
   } else if (scr === "scr-end") { show("scr-end");
   } else if (scr === "scr-dead") {
     show("scr-dead");

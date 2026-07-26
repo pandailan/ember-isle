@@ -234,7 +234,7 @@ export function onTradeMessage(m: NetMsg): boolean {
 export function forceLeaveForCombat(): void {
   if (!atPost) return;
   closeTradePost();
-  show("scr-combat");
+  show("scr-dungeon"); // the fight is waiting in the corridor
 }
 
 export function isAtTradePost(): boolean { return atPost; }

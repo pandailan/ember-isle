@@ -8,17 +8,19 @@ import {
   fleeBonus, goldMult, potionHeal, spellsOf, hasFlag,
 } from "./traits";
 import { app } from "./bus";
-import { show, renderPlaques, renderFoesData, redrawCombatLog } from "./ui";
+import { show, renderPlaques, redrawCombatLog } from "./ui";
+import { combatView, combatPop } from "./render";
 import { $, sleep, rnd, ri } from "./util";
 import { askRemote, isRemoteSeat, clearRemoteMenu } from "./coop";
 import { setScene, sfx } from "./audio";
 
 let combat: CombatState = null as unknown as CombatState;
+let fighting = false;
 let choiceResolve: ((v: unknown) => void) | null = null;
 const PACE = 440;
 
 export function combatSnapshot(): {enemies: EnemyInst[]; log: string[]; title: string} | null {
-  if (!combat || !$("scr-combat").classList.contains("on")) return null;
+  if (!combat || !fighting) return null;
   return {enemies: combat.enemies, log: combat.log, title: $("combat-title").textContent || ""};
 }
 
@@ -26,7 +28,7 @@ function clog(msg: string): void {
   combat.log.push(msg); if (combat.log.length > 4) combat.log.shift();
   redrawCombatLog(combat.log);
 }
-function renderFoes(): void { renderFoesData(combat.enemies); }
+function renderFoes(): void { combatView(combat.enemies); }
 
 /* Floating damage numbers & hit shakes, flushed after each re-render. */
 interface Pop { side: "e" | "p"; idx: number; text: string; cls: string; }
@@ -36,8 +38,8 @@ function pop(side: "e" | "p", idx: number, text: string, cls = ""): void {
 }
 function flushPops(): void {
   for (const p of pendingPops) {
-    const sel = p.side === "e" ? "#foes .foe" : "#cb-plaques .plaque";
-    const el = document.querySelectorAll<HTMLElement>(sel)[p.idx];
+    if (p.side === "e") { combatPop(p.idx, p.text, p.cls); continue; } // floats in the world
+    const el = document.querySelectorAll<HTMLElement>("#dg-plaques .plaque")[p.idx];
     if (!el) continue;
     const span = document.createElement("span");
     span.className = "pop " + p.cls;
@@ -96,12 +98,15 @@ export function startCombat(groupKeys: string[], isBoss: boolean): void {
     isBoss, log: [], round: 0, fled: false,
   };
   setScene("combat"); sfx("combat");
+  fighting = true;
+  document.body.classList.add("fighting");
+  $("combat-panel").hidden = false;
   $("combat-title").textContent = isBoss ? "Pyrelord Vhal, Keeper of the Ember" :
     combat.enemies.length > 1 ? "Shapes rush from the dark!" : "A shape rushes from the dark!";
-  renderFoes(); renderPlaques("cb-plaques");
+  renderFoes(); renderPlaques("dg-plaques");
   $("combat-log").innerHTML = ""; combat.log = [];
   clog(isBoss ? "“Climbers. The Ember was promised bones.”" : "Steel out — they have your scent.");
-  show("scr-combat");
+  show("scr-dungeon"); // the fight happens where you stand
   void runCombat();
 }
 
@@ -122,7 +127,7 @@ async function runCombat(): Promise<void> {
       if (combat.fled) break;
       if (a.side === "p") { if (!a.c.m.down) await doPlayerAction(a.c); }
       else { if (a.e.hp > 0) await doEnemyAction(a.e); }
-      renderFoes(); renderPlaques("cb-plaques"); flushPops();
+      renderFoes(); renderPlaques("dg-plaques"); flushPops();
     }
     if (combat.fled) break;
     if (combat.enemies.every(e => e.hp <= 0)) { await combatVictory(); return; }
@@ -130,6 +135,7 @@ async function runCombat(): Promise<void> {
   }
   // fled
   await sleep(500);
+  endCombatView();
   state.graceLeft = ENC_GRACE + 2;
   app.combatFled(); save();
   app.backToDungeon("You run until the torchlight steadies. Nothing follows. Probably.");
@@ -384,7 +390,7 @@ async function combatVictory(): Promise<void> {
       await sleep(420);
     }
   }
-  renderPlaques("cb-plaques");
+  renderPlaques("dg-plaques");
   // trophies: some foes leave something worth hauling home
   for (const e of combat.enemies) {
     const drop = ENEMIES[e.key]?.drop;
@@ -404,6 +410,7 @@ async function combatVictory(): Promise<void> {
     cmdMenu("", [{t: "Take the Heart and go on", v: 1, wide: true}]);
     await awaitChoice();
     save();
+    endCombatView();
     app.backToDungeon("The Heart of Ember weighs your pack like a promise. The harbor is waiting.");
     return;
   }
@@ -411,10 +418,20 @@ async function combatVictory(): Promise<void> {
   app.combatWon(); save();
   cmdMenu("", [{t: "Press On", v: 1, wide: true}]);
   await awaitChoice();
+  endCombatView();
   app.backToDungeon(null);
 }
 
+/** The fight leaves the view: hide the panel, free the corridor. */
+export function endCombatView(): void {
+  fighting = false;
+  document.body.classList.remove("fighting");
+  $("combat-panel").hidden = true;
+  combatView(null);
+}
+
 function combatDefeat(): void {
+  endCombatView();
   sfx("defeat"); save();
   $("bt-dead-load").style.display = ""; // may have been hidden while mirroring a host
   show("scr-dead");
@@ -427,6 +444,6 @@ export function adoptCombat(enemies: EnemyInst[]): void {
   combat.enemies.forEach((e, i) => {
     if (enemies[i]) { e.hp = enemies[i].hp; e.maxhp = enemies[i].maxhp; }
   });
-  renderFoesData(combat.enemies);
+  renderFoes();
   clog("The link is severed — the whole line is yours to command now.");
 }
