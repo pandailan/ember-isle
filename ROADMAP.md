@@ -149,6 +149,15 @@
   grave-gold and a relic — though the sleepers may want it back — wrecks
   yield salvage and potions, and ruins hide small hoards.
 
+- **One screen, every device** — the play screen locks to the viewport: no
+  page scroll on iPad, iPhone, or PC. Wide screens get a sidebar layout —
+  the 3D view fills the left edge to edge while compass, log, party
+  plaques (2×2), combat commands, and thumb controls stack on the right.
+  Portrait phones keep the column but everything fits above the fold. The
+  renderer now resizes to its container — true widescreen aspect instead
+  of a fixed 4:3 letterbox — with the buffer capped so retina tablets
+  don't quadruple the bloom cost.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

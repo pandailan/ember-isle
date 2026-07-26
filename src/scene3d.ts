@@ -366,6 +366,19 @@ function labelSprite(text: string): THREE.Sprite {
 }
 
 /* ---------- init ---------- */
+/** Fit the render to the container: the view is no longer locked to 4:3.
+    Buffer width is capped so retina iPads don't quadruple the bloom cost. */
+export function setViewSize(w: number, h: number): void {
+  if (!renderer || !composer || w < 2 || h < 2) return;
+  const r = Math.min(window.devicePixelRatio || 1, 2, 1366 / w);
+  renderer.setPixelRatio(r);
+  renderer.setSize(w, h, false);
+  composer.setPixelRatio(r);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
 export function initScene(canvas: HTMLCanvasElement): boolean {
   try {
     renderer = new THREE.WebGLRenderer({canvas, antialias: true});
