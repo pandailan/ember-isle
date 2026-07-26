@@ -315,9 +315,15 @@ export function initCoop(): void {
     if (!net.connected) return;
     const snap = snapshot();
     const j = JSON.stringify(snap);
-    if (j !== lastSync) { lastSync = j; net.send(snap as unknown as Record<string, unknown> & {t: string}); }
+    // resend periodically even when unchanged: a single lost packet must never
+    // strand the companion (e.g. the snapshot that carries combat's start)
+    if (j !== lastSync || ++resendTick % 8 === 0) {
+      lastSync = j;
+      net.send(snap as unknown as Record<string, unknown> & {t: string});
+    }
   }, 250);
 
+  let resendTick = 0;
   net.onPeerChange = () => {
     if (net.role === "host") {
       lastSync = ""; // force a full snapshot to the (dis)connected companion

@@ -158,6 +158,26 @@
   of a fixed 4:3 letterbox — with the buffer capped so retina tablets
   don't quadruple the bloom cost.
 
+- **Creatures with bodies** — every enemy is a real 3D rig now
+  (`src/monsters3d.ts`, canonical and swap-friendly like the asset library):
+  wolves with muzzles and breathing flanks, rattling skeletons, glossy
+  slimes, hooded wraiths that never touch the ground, golems with burning
+  seams, the horned Pyrelord under a crown of flame. Rigs idle, yaw to face
+  the party, flinch white-hot when struck, lunge when they attack, and
+  truly die — bipeds topple, soft things melt. World mobs use the same
+  rigs. Crits punch the camera; melee hits flare a slash arc.
+
+- **The isle drawn deeper** — instanced wind-bent grass across moor and
+  cove (one draw call), ground cover that shares cells with standing props,
+  a real sun that rakes cast shadows over the open ground (PCF-soft,
+  balanced against ambient so noon has shape), a sea that swells in the
+  vertex stage instead of only scrolling, and golden-hour god rays that
+  pour from the sun's seat on screen through the grade pass.
+
+- **Co-op hardening** — the host now re-sends its snapshot periodically
+  even when unchanged, so a single lost packet (like the one carrying a
+  fight's start) can never strand the companion's mirror.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

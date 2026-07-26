@@ -14,12 +14,12 @@ import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome
 import { ASSETS, FEATURE_ASSET, bindAssetFx } from "./assets3d";
 import { net } from "./net";
 import { reduceMotion, rnd } from "./util";
-import { groundLevelAt, hasElevation, cellHash } from "./terrain";
+import { groundLevelAt, hasElevation } from "./terrain";
 import { hourOf } from "./daytime";
 import { sfx } from "./audio";
 
 /* ---------- deterministic per-cell hash (matches the old renderer) ---------- */
-
+const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
 
 const groundHAt = (wx: number, wz: number): number => groundLevelAt(state.level, wx, wz);
 
@@ -366,19 +366,6 @@ function labelSprite(text: string): THREE.Sprite {
 }
 
 /* ---------- init ---------- */
-/** Fit the render to the container: the view is no longer locked to 4:3.
-    Buffer width is capped so retina iPads don't quadruple the bloom cost. */
-export function setViewSize(w: number, h: number): void {
-  if (!renderer || !composer || w < 2 || h < 2) return;
-  const r = Math.min(window.devicePixelRatio || 1, 2, 1366 / w);
-  renderer.setPixelRatio(r);
-  renderer.setSize(w, h, false);
-  composer.setPixelRatio(r);
-  composer.setSize(w, h);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-}
-
 export function initScene(canvas: HTMLCanvasElement): boolean {
   try {
     renderer = new THREE.WebGLRenderer({canvas, antialias: true});

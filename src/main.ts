@@ -98,5 +98,5 @@ declare global { interface Window { __ei: unknown; } }
 window.__ei = {
   get state() { return state; },
   startCombat, enterDungeon, openTown, openTavern, save,
-  door: townDoorBump, groundLevelAt, visionRadius,
+  door: townDoorBump, groundLevelAt, visionRadius, net,
 };
