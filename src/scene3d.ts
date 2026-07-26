@@ -53,6 +53,10 @@ let emberPoints: THREE.Points | null = null;
 let emberData: Float32Array | null = null;
 let emberMode: "rise" | "drift" = "rise";
 
+/* the sea: shared drifting textures for coast tiles and the open water */
+let waterTexTile: THREE.CanvasTexture | null = null;
+let waterTexSea: THREE.CanvasTexture | null = null;
+
 /* ---------- texture helpers ---------- */
 const texCache = new Map<HTMLCanvasElement, THREE.CanvasTexture>();
 function tex(cv: HTMLCanvasElement, repeat = false): THREE.CanvasTexture {
@@ -83,6 +87,47 @@ function glowTexture(color: string): THREE.CanvasTexture {
 
 let spriteSource: ((key: string) => HTMLCanvasElement) | null = null;
 export function setSpriteSource(fn: (key: string) => HTMLCanvasElement): void { spriteSource = fn; }
+
+/* ---------- the sea around the isle ---------- */
+function waterCanvas(): HTMLCanvasElement {
+  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128;
+  const c = cv.getContext("2d")!;
+  const grad = c.createLinearGradient(0, 0, 0, 128);
+  grad.addColorStop(0, "#0c1e28"); grad.addColorStop(1, "#0a1822");
+  c.fillStyle = grad; c.fillRect(0, 0, 128, 128);
+  for (let k = 0; k < 26; k++) { // wave streaks, drawn wrapped so tiles join
+    c.strokeStyle = `rgba(150,200,215,${(0.04 + rnd() * 0.07).toFixed(3)})`;
+    c.lineWidth = 1 + rnd() * 1.4;
+    const x0 = rnd() * 128, y0 = rnd() * 128, len = 20 + rnd() * 40, bow = (rnd() - 0.5) * 6;
+    for (const [wx, wy] of [[0, 0], [-128, 0], [0, -128], [-128, -128]]) {
+      c.beginPath(); c.moveTo(x0 + wx, y0 + wy);
+      c.quadraticCurveTo(x0 + len / 2 + wx, y0 + bow + wy, x0 + len + wx, y0 + wy);
+      c.stroke();
+    }
+  }
+  for (let k = 0; k < 12; k++) { c.fillStyle = "rgba(220,235,240,.1)"; c.fillRect(rnd() * 128, rnd() * 128, 2.2, 1.2); }
+  return cv;
+}
+let waterMats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] | null = null;
+function getWaterMats(): [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] {
+  if (!waterMats) {
+    const cv = waterCanvas();
+    const mk = () => {
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      return t;
+    };
+    waterTexTile = mk();
+    waterTexSea = mk(); waterTexSea.repeat.set(64, 64);
+    const mkMat = (t: THREE.CanvasTexture) => new THREE.MeshStandardMaterial({
+      map: t, roughness: 0.75, metalness: 0.05, emissive: 0x0c2430, emissiveIntensity: 0.55,
+    });
+    waterMats = [mkMat(waterTexTile), mkMat(waterTexSea)];
+  }
+  return waterMats;
+}
+const foamMat = new THREE.MeshBasicMaterial({color: 0xbfd8dc, transparent: true, opacity: 0.2, depthWrite: false});
 
 /* ---------- door textures (facade + arch + hanging sign) ---------- */
 const doorTexCache: Record<string, THREE.CanvasTexture> = {};
@@ -236,6 +281,34 @@ function addFlame(group: THREE.Group, x: number, y: number, z: number, color: st
 const woodMat = new THREE.MeshStandardMaterial({color: 0x3a2a18, roughness: 0.9});
 const ironMat = new THREE.MeshStandardMaterial({color: 0x17100a, roughness: 0.7, metalness: 0.4});
 const stoneMat = new THREE.MeshStandardMaterial({color: 0x4a4640, roughness: 0.95});
+const boulderMat = new THREE.MeshStandardMaterial({color: 0x4c5446, roughness: 0.95});
+const wildFolMat = new THREE.MeshStandardMaterial({color: 0x16261a, roughness: 0.95});
+
+/** Impassable wilds: boulder heaps and dense thickets where a dungeon would have masonry. */
+function buildWilds(x: number, y: number, h: number): void {
+  const g = new THREE.Group(); g.position.set(x, 0, y);
+  if (h % 3 === 0) { // a stand of pines too dense to push through
+    for (let i = 0; i < 3; i++) {
+      const th = 0.45 + ((h >> (i * 2)) % 4) * 0.09;
+      const tx = 0.2 + ((h >> i) % 5) / 5 * 0.6, tz = 0.2 + ((h >> (i + 3)) % 5) / 5 * 0.6;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.05, th, 5), woodMat);
+      trunk.position.set(tx, th / 2, tz); g.add(trunk);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22 + ((h >> (i + 4)) % 4) * 0.03, 0.5 + th * 0.5, 7), wildFolMat);
+      cone.position.set(tx, th + 0.18, tz); g.add(cone);
+    }
+    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.2, 7, 5), wildFolMat);
+    bush.position.set(0.5, 0.12, 0.5); bush.scale.y = 0.6; g.add(bush);
+  } else { // a heap of mossy boulders
+    for (let i = 0; i < 3; i++) {
+      const r = 0.16 + ((h >> (i * 2)) % 5) * 0.05;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), boulderMat);
+      rock.position.set(0.24 + ((h >> i) % 7) / 7 * 0.5, r * 0.62, 0.24 + ((h >> (i + 3)) % 7) / 7 * 0.5);
+      rock.rotation.set(i + h % 5, h % 7, 0); rock.scale.y = 0.75;
+      g.add(rock);
+    }
+  }
+  worldGroup.add(g);
+}
 
 const PROPS3D: Record<string, Prop3D> = {
   torch(p) {
@@ -274,7 +347,8 @@ const PROPS3D: Record<string, Prop3D> = {
   },
   puddle(p) {
     const disc = new THREE.Mesh(new THREE.CircleGeometry(0.3, 18),
-      new THREE.MeshStandardMaterial({color: 0x1a2836, roughness: 0.08, metalness: 0.85}));
+      new THREE.MeshStandardMaterial({color: 0x1a2836, roughness: 0.08, metalness: 0.85,
+        emissive: 0x0e2028, emissiveIntensity: 0.5}));
     disc.rotation.x = -Math.PI / 2;
     disc.position.set(p.x + 0.5 + ((p.hash % 13) - 6) * 0.02, 0.005, p.z + 0.5);
     p.group.add(disc);
@@ -387,6 +461,12 @@ export function buildLevel(): void {
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(mw / 2, 0, mh / 2);
   worldGroup.add(floor);
+  if (isMoor) { // the isle sits in open sea; it runs to the horizon under the fog
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), getWaterMats()[1]);
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.set(mw / 2, -0.05, mh / 2);
+    worldGroup.add(sea);
+  }
   if (!town) {
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(mw, mh),
       new THREE.MeshStandardMaterial({color: biome.id === "emberdeep" ? 0x241210 : 0x201610, roughness: 1}));
@@ -418,10 +498,14 @@ export function buildLevel(): void {
     if (!solidWall) continue;
     const h = cellHash(x, y);
     const perimeter = x === 0 || y === 0 || x === mw - 1 || y === mh - 1;
-    // buildings rise to different heights; moor walls are rocky outcrops
+    if (isMoor && !isDoor && !perimeter) { // the open moor builds no masonry
+      buildWilds(x, y, h);
+      continue;
+    }
+    // buildings rise to different heights; the moor keeps only the town's seaward wall
     let hgt = 1;
     if (isHarbor) hgt = perimeter ? 1.12 : 1.02 + (h % 5) * 0.11;
-    else if (isMoor) hgt = 0.55 + (h % 7) * 0.07; // low outcrops you can see over
+    else if (isMoor) hgt = 1.12;
     if (isDoor) hgt = Math.max(hgt, 1.05);
     const wall = new THREE.Mesh(wallGeo, wallMats[h % wallMats.length]);
     wall.scale.y = hgt;
@@ -443,11 +527,6 @@ export function buildLevel(): void {
         chim.position.set(x + 0.5 + (ridgeAlongZ ? 0 : 0.2), hgt + 0.3, y + 0.5 + (ridgeAlongZ ? 0.2 : 0));
         worldGroup.add(chim);
       }
-    } else if (isMoor && h % 4 === 0) {
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3, 0), stoneMat);
-      rock.position.set(x + 0.5, hgt + 0.1, y + 0.5);
-      rock.rotation.set(h % 5, h % 7, 0); rock.scale.set(1.1, 0.65, 1.1);
-      worldGroup.add(rock);
     }
     if (isDoor) {
       for (const face of faces) {
@@ -607,6 +686,19 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
       new THREE.MeshStandardMaterial({map: new THREE.CanvasTexture(canopyCv), side: THREE.DoubleSide, roughness: 0.9}));
     canopy.rotation.x = -0.5; canopy.position.set(cx, 0.86, cz + 0.05);
     g.add(canopy);
+  } else if (ch === "~") { // the sea at the isle's edge
+    const tile = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), getWaterMats()[0]);
+    tile.rotation.x = -Math.PI / 2; tile.position.set(cx, 0.02, cz);
+    g.add(tile);
+    const map = MAPS[state.level];
+    for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as [number, number][]) {
+      const n = map[y + dy]?.[x + dx];
+      if (n === undefined || n === "~") continue;
+      const foam = new THREE.Mesh(new THREE.PlaneGeometry(dx ? 0.09 : 1, dx ? 1 : 0.09), foamMat);
+      foam.rotation.x = -Math.PI / 2;
+      foam.position.set(cx + dx * 0.455, 0.028, cz + dy * 0.455);
+      g.add(foam);
+    }
   }
   if (biome.sky && SIGN_NAMES[ch]) { // plaza sights get their name in the air too
     const sp = labelSprite(SIGN_NAMES[ch]);
@@ -661,6 +753,11 @@ export function frame(dt: number): void {
   if (!reduceMotion) for (const f of flameSprites) {
     f.sprite.scale.setScalar(f.base * (0.85 + 0.2 * Math.sin(animT * 8 + f.phase)));
   }
+  // the sea drifts
+  if (!reduceMotion && waterTexTile && waterTexSea) {
+    waterTexTile.offset.x += dt * 0.012; waterTexTile.offset.y += dt * 0.004;
+    waterTexSea.offset.x += dt * 0.003; waterTexSea.offset.y += dt * 0.001;
+  }
   // signposts fade out when you stand beneath them
   for (const lb of labels) {
     const d = lb.pos.distanceTo(camera.position);
@@ -713,10 +810,15 @@ export function frame(dt: number): void {
     for (let i = 0; i < pos.count; i++) {
       if (emberMode === "drift") {
         const ph = emberData[i * 4 + 3];
-        pos.setXYZ(i,
-          emberData[i * 4] + Math.sin(animT * 0.55 + ph * 1.7) * 0.4,
-          emberData[i * 4 + 1] + Math.sin(animT * 0.9 + ph) * 0.1,
-          emberData[i * 4 + 2] + Math.cos(animT * 0.45 + ph * 2.3) * 0.4);
+        let fx = emberData[i * 4] + Math.sin(animT * 0.55 + ph * 1.7) * 0.4;
+        let fy = emberData[i * 4 + 1] + Math.sin(animT * 0.9 + ph) * 0.1;
+        let fz = emberData[i * 4 + 2] + Math.cos(animT * 0.45 + ph * 2.3) * 0.4;
+        const ddx = fx - camera.position.x, ddz = fz - camera.position.z;
+        if (ddx * ddx + ddz * ddz < 0.36) { // one at the lens is a lantern in the eye
+          respawnEmber(i, mw, mh);
+          fx = emberData[i * 4]; fy = emberData[i * 4 + 1]; fz = emberData[i * 4 + 2];
+        }
+        pos.setXYZ(i, fx, fy, fz);
         continue;
       }
       emberData[i * 4 + 1] += emberData[i * 4 + 3] * dt;

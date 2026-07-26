@@ -113,6 +113,11 @@ export function step(back: boolean, byGuest = false): void {
   const f = DIRV[state.dir], s = back ? -1 : 1;
   const nx = state.x + f[0] * s, ny = state.y + f[1] * s;
   const cell = cellAt(state.level, nx, ny);
+  if (cell === "~") {
+    sfx("bump");
+    dlog("Black water swallows the shingle. The isle ends here.");
+    renderView(); return;
+  }
   if (cell === "#") {
     sfx("bump");
     dlog(state.level === 0 ? "A shuttered wall. The town sleeps."

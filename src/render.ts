@@ -63,7 +63,7 @@ export function renderAutomap(): void {
   for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
     if (!vis.has(x + "," + y)) continue;
     const c = cellAt(state.level, x, y);
-    actx.fillStyle = c === "#" ? "#3a2d1c" : "#241c12";
+    actx.fillStyle = c === "#" ? "#3a2d1c" : c === "~" ? "#16303e" : "#241c12";
     actx.fillRect(ox + x * cs, oy + y * cs, cs - 1, cs - 1);
     if (FEAT_HUE[c]) {
       actx.fillStyle = FEAT_HUE[c];
@@ -77,8 +77,8 @@ export function renderAutomap(): void {
     }
     for (const [dx, dy] of DIRV_A) {
       const nx = x + dx, ny = y + dy;
-      if (nx >= 0 && ny >= 0 && nx < mw && ny < mh && m[ny][nx] === "#") {
-        actx.fillStyle = "#3a2d1c";
+      if (nx >= 0 && ny >= 0 && nx < mw && ny < mh && (m[ny][nx] === "#" || m[ny][nx] === "~")) {
+        actx.fillStyle = m[ny][nx] === "~" ? "#16303e" : "#3a2d1c";
         actx.fillRect(ox + nx * cs, oy + ny * cs, cs - 1, cs - 1);
       }
     }
