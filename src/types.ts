@@ -55,8 +55,10 @@ export interface Member {
 
 export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; note?: string; items?: string[]; cards?: [CardKind, string][]; }
 
-/** A monster pack living on the map — visible in the corridor, chases the party. */
-export interface Mob { x: number; y: number; key: string; group: string[]; }
+/** A monster pack living on the map — visible in the corridor, chases the party.
+    heat: steps of pursuit left once it has your scent; cool: steps of sulking
+    after it gives up, during which it will not re-aggro. */
+export interface Mob { x: number; y: number; key: string; group: string[]; heat?: number; cool?: number; }
 
 export type Weather = "clear" | "mist" | "rain" | "storm";
 

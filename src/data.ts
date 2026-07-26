@@ -74,6 +74,25 @@ export const ENEMIES: Record<string, EnemyDef> = {
   boss:{n:"Pyrelord Vhal",hp:240,atk:17, def:6, spd:7, xp:600,g:500,hue:"#e09a3c", boss:true},
 };
 
+/** Temperament of a pack on the prowl: sight is how far it notices you,
+    chase how many steps it keeps hunting before losing heart, slow marks
+    lumbering things that fall a step behind. 99 means it never gives up. */
+export interface AggroDef { sight: number; chase: number; slow?: boolean; }
+export const AGGRO: Record<string, AggroDef> = {
+  rat: {sight: 3, chase: 2},              // skittish — nips at heels, thinks better of it
+  sli: {sight: 2, chase: 3, slow: true},  // barely notices you, oozes after
+  gob: {sight: 4, chase: 5},
+  ske: {sight: 3, chase: 99},             // the dead do not tire
+  orc: {sight: 4, chase: 8},
+  wra: {sight: 5, chase: 99},
+  cul: {sight: 4, chase: 6},
+  gol: {sight: 3, chase: 99, slow: true}, // slow, and stone never forgets
+  wlf: {sight: 5, chase: 12},             // wolves run you down
+};
+export const AGGRO_DEF: AggroDef = {sight: 4, chase: 6};
+/** Steps of sulking after a hunt is abandoned before a pack can re-aggro. */
+export const AGGRO_COOL = 6;
+
 export const GROUPS: Record<number, string[][]> = {
   1:[["rat","rat"],["rat","rat","rat"],["sli","sli"],["gob"],["gob","rat"],["gob","gob"],["ske"],["ske","rat","rat"],["sli","gob"]],
   2:[["orc"],["orc","gob","gob"],["wra"],["cul","ske"],["orc","orc"],["gol"],["cul","wra"],["ske","ske","ske"],["gol","cul"]],

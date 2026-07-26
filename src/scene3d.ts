@@ -7,6 +7,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { MAPS, TOWN_DOORS, ENEMIES } from "./data";
 import { state, cellAt } from "./state";
 import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome } from "./biomes";
@@ -26,6 +27,7 @@ const groundHAt = (wx: number, wz: number): number => groundLevelAt(state.level,
 let renderer: THREE.WebGLRenderer | null = null;
 let composer: EffectComposer | null = null;
 let bloom: UnrealBloomPass | null = null;
+let grade: ShaderPass | null = null;
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 let worldGroup: THREE.Group;          // rebuilt per level
@@ -388,8 +390,43 @@ export function initScene(canvas: HTMLCanvasElement): boolean {
   bloom = new UnrealBloomPass(new THREE.Vector2(480, 360), 0.65, 0.55, 0.72);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  grade = new ShaderPass(GradeShader);
+  composer.addPass(grade);
   return true;
 }
+
+/** The picturesque pass: runs after tone mapping, in display space.
+    A gentle S-curve, split-toned shadows and highlights that follow the
+    day, golden-hour warmth, a soft vignette, and a whisper of grain. */
+const GradeShader = {
+  uniforms: {
+    tDiffuse: {value: null as THREE.Texture | null},
+    uTime: {value: 0}, uNight: {value: 0}, uDusk: {value: 0},
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uTime, uNight, uDusk;
+    varying vec2 vUv;
+    void main() {
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      c *= mix(1.07, 1.0, uNight);                                   // daylight breathes
+      c = mix(c, c * c * (3.0 - 2.0 * c), 0.16);                    // gentle S-curve
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      vec3 shadowTint = mix(vec3(0.96, 0.99, 1.04), vec3(0.88, 0.95, 1.10), uNight);
+      vec3 lightTint  = mix(vec3(1.04, 1.00, 0.97), vec3(0.99, 1.00, 1.04), uNight);
+      c *= mix(shadowTint, lightTint, smoothstep(0.12, 0.72, l));   // split-tone
+      c *= mix(vec3(1.0), vec3(1.15, 1.01, 0.84), uDusk);           // golden hour
+      c = mix(vec3(l), c, 1.14);                                     // a touch more chroma
+      vec2 q = vUv - 0.5;
+      c *= 1.0 - dot(q, q) * (0.30 + 0.30 * uNight);                 // vignette, deeper at night
+      float g = fract(sin(dot(vUv + fract(uTime * 0.37), vec2(12.9898, 78.233))) * 43758.5453);
+      c += (g - 0.5) * 0.014;                                        // fine grain
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+};
 
 /* ---------- prop builders (3D prop structs, placed by the biome rules) ---------- */
 interface Prop3DCtx { group: THREE.Group; x: number; z: number; hash: number; biome: Biome; faceDir?: [number, number]; }
@@ -1049,5 +1086,15 @@ export function frame(dt: number): void {
     vp.needsUpdate = true;
   } else if (rain) rain.visible = false;
   if (bloom) bloom.strength = biome.sky ? skyBloom : 0.7;
+  if (grade) {
+    grade.uniforms.uTime.value = animT;
+    if (biome.sky) {
+      grade.uniforms.uNight.value = nightK;
+      // golden hour: the sun low but risen — warmth swells, then fades with height
+      const up = Math.max(0, Math.min(1, (sunK - 0.03) / 0.15));
+      const high = Math.max(0, Math.min(1, (sunK - 0.55) / 0.3));
+      grade.uniforms.uDusk.value = up * (1 - high);
+    } else { grade.uniforms.uNight.value = 0.35; grade.uniforms.uDusk.value = 0.15; } // torchlight is its own hour
+  }
   composer.render();
 }

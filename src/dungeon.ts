@@ -3,7 +3,8 @@ import { state, save, cellAt, markVisited, allCards, mobAt, isSaveEnabled } from
 import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
-import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID, ITEMS, RELICS, EVENTS } from "./data";
+import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID, ITEMS, RELICS, EVENTS, AGGRO, AGGRO_DEF, AGGRO_COOL } from "./data";
+import { groundLevelAt, hasElevation } from "./terrain";
 import { vaultLoot, leaveVault, openBinder } from "./binder";
 import { makeTCard } from "./cards";
 import { findCarrier } from "./items";
@@ -127,18 +128,42 @@ function engage(mob: Mob): void {
   app.startCombat(mob.group, false);
 }
 
-/** After the party moves, nearby packs stalk closer; distant ones wander. */
+/** After the party moves, packs act on temperament: sighting you lights their
+    heat (pursuit patience); each step of the hunt burns it down until the pack
+    gives up and sulks. The dead never give up. Outdoors, hunters keep to the
+    low ground and steep climbs make them scrabble — luring wolves uphill works. */
 function moveMobs(): void {
   const mobs = state.mobs[state.level] ?? [];
   const occupied = new Set(mobs.map(m => m.x + "," + m.y));
+  const lifted = hasElevation(state.level);
   let attacker: Mob | null = null;
   for (const m of mobs) {
+    const a = AGGRO[m.key] ?? AGGRO_DEF;
     const dx = state.x - m.x, dy = state.y - m.y;
     const dist = Math.abs(dx) + Math.abs(dy);
+    let lit = false;
+    if (m.cool) { m.cool--; if (!m.cool) delete m.cool; }
+    else if (!m.heat && dist > 0 && dist <= a.sight) {
+      m.heat = a.chase; lit = true;
+      dlog(`${ENEMIES[m.key]?.n ?? "Something"} has your scent!`);
+    }
+    if (m.heat && !lit && dist > 2) { // a hunter on your heels doesn't lose heart
+      m.heat--;
+      if (!m.heat) {
+        delete m.heat; m.cool = AGGRO_COOL;
+        if (dist <= a.sight + 4) dlog(`${ENEMIES[m.key]?.n ?? "Something"} loses interest in the chase.`);
+      }
+    }
+    const hunting = !!m.heat && dist > 0;
+    if (hunting && a.slow && state.steps % 2 === 0) continue; // lumbering things fall behind
     const steps: [number, number][] = [];
-    if (dist <= 4 && dist > 0) {
+    if (hunting) {
       if (Math.abs(dx) >= Math.abs(dy)) steps.push([Math.sign(dx), 0], [0, Math.sign(dy)]);
       else steps.push([0, Math.sign(dy)], [Math.sign(dx), 0]);
+      if (lifted && (steps[1][0] || steps[1][1])) { // prefer the gentler of the two paths
+        const h = (s: [number, number]) => groundLevelAt(state.level, m.x + s[0] + 0.5, m.y + s[1] + 0.5);
+        if (h(steps[0]) - h(steps[1]) > 0.03) steps.reverse();
+      }
     } else if (rnd() < 0.2) {
       steps.push(DIRV[ri(4)] as unknown as [number, number]);
     }
@@ -148,6 +173,9 @@ function moveMobs(): void {
       if (tx === state.x && ty === state.y) { if (!attacker) attacker = m; break; }
       if (MAPS[state.level][ty]?.[tx] !== ".") continue;
       if (occupied.has(tx + "," + ty)) continue;
+      if (hunting && lifted && rnd() < 0.4
+          && groundLevelAt(state.level, tx + 0.5, ty + 0.5)
+           - groundLevelAt(state.level, m.x + 0.5, m.y + 0.5) > 0.045) break; // scrabbles at the slope
       occupied.delete(m.x + "," + m.y);
       m.x = tx; m.y = ty;
       occupied.add(tx + "," + ty);

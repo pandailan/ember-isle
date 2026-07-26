@@ -104,6 +104,21 @@
   the side below swings ~10% weaker, called out in the combat log when the
   ground is steep enough to matter.
 
+- **Mob temperament** — packs are individuals now. Each species has a sight
+  range and a chase patience: sighting the party lights a pursuit that burns
+  down step by step until the pack loses heart and sulks (unable to re-aggro
+  for a spell). Rats nip and think better of it; wolves run you down for
+  a dozen steps; skeletons, wraiths, and golems never stop coming. Slimes
+  and golems lumber a step behind. Outdoors, hunters keep to the low ground
+  and steep climbs make them scrabble — luring wolves uphill is a real
+  tactic. The log narrates the hunt: "has your scent", "loses interest".
+
+- **The picturesque pass** — a final color-grade shader after tone mapping:
+  a gentle contrast curve, split-toned shadows and highlights that follow
+  the clock, a golden-hour warmth that swells as the sun rides low, a soft
+  vignette that deepens at night, and a whisper of animated film grain.
+  Torchlit depths get their own warm, close-cornered grade.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
