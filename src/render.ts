@@ -2,6 +2,8 @@ import { MAPS, LEVEL_NAMES, DIRV, DIRN, ENEMIES, TOWN_DOORS } from "./data";
 import { state, cellAt, mobAt } from "./state";
 import { net } from "./net";
 import { $, rnd, reduceMotion } from "./util";
+import { biomeFor, biomeTextures, type Biome } from "./biomes";
+import { PROPS, type PropCtx, type PropLight } from "./props";
 
 export const view = document.getElementById("view") as HTMLCanvasElement;
 const ctx = view.getContext("2d")!;
@@ -21,113 +23,92 @@ const BYP = (p: number) => CY + HH[p];
 /* ---------- animation clock, sprite cache, ember particles ---------- */
 let animT = 0;
 
-/* ---------- procedural stone textures ---------- */
-/* Irregular block courses with per-stone shading, relief edges, cracks,
-   grain, and mossy variants. Deterministic, generated once. */
-let wallTexCache: HTMLCanvasElement[] | null = null;
-
-function makeWallTexture(seed: number, mossy: boolean): HTMLCanvasElement {
-  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128;
-  const c = cv.getContext("2d")!;
-  let pi = 0;
-  const pr = () => { const s = Math.sin(seed * 91.7 + (pi++) * 127.1) * 43758.5453; return s - Math.floor(s); };
-  c.fillStyle = "#3a2b1b"; c.fillRect(0, 0, 128, 128); // mortar ground
-  let y = 0;
-  while (y < 128) {
-    const rh = 17 + Math.floor(pr() * 15);
-    let x = -Math.floor(pr() * 22);
-    while (x < 128) {
-      const bw = 20 + Math.floor(pr() * 28);
-      const shade = 0.8 + pr() * 0.4;
-      c.fillStyle = `rgb(${Math.round(92 * shade)},${Math.round(69 * shade)},${Math.round(47 * shade)})`;
-      c.fillRect(x + 1.5, y + 1.5, bw - 3, rh - 3);
-      c.fillStyle = "rgba(232,217,176,.07)"; c.fillRect(x + 1.5, y + 1.5, bw - 3, 2);   // top relief
-      c.fillStyle = "rgba(0,0,0,.24)"; c.fillRect(x + 1.5, y + rh - 4.5, bw - 3, 3);   // under-shadow
-      if (pr() < 0.18) { // a chipped corner
-        c.fillStyle = "rgba(0,0,0,.2)";
-        c.beginPath(); c.moveTo(x + 1.5, y + 1.5); c.lineTo(x + 8, y + 1.5); c.lineTo(x + 1.5, y + 7); c.closePath(); c.fill();
-      }
-      x += bw;
-    }
-    y += rh;
-  }
-  for (let k = 0; k < 3; k++) { // cracks wandering down
-    c.strokeStyle = "rgba(0,0,0,.35)"; c.lineWidth = 1;
-    c.beginPath();
-    let cx0 = pr() * 128, cy0 = pr() * 60;
-    c.moveTo(cx0, cy0);
-    for (let s2 = 0; s2 < 4; s2++) { cx0 += (pr() - 0.5) * 26; cy0 += pr() * 20; c.lineTo(cx0, cy0); }
-    c.stroke();
-  }
-  for (let k = 0; k < 320; k++) { // grain
-    c.fillStyle = pr() < 0.5 ? "rgba(0,0,0,.1)" : "rgba(232,217,176,.05)";
-    c.fillRect(pr() * 128, pr() * 128, 1.4, 1.4);
-  }
-  if (mossy) {
-    for (let k = 0; k < 30; k++) {
-      c.fillStyle = `rgba(92,122,58,${0.08 + pr() * 0.16})`;
-      c.beginPath(); c.arc(pr() * 128, 55 + pr() * 73, 2 + pr() * 6, 0, 7); c.fill();
-    }
-  }
-  return cv;
-}
-
-function wallTextures(): HTMLCanvasElement[] {
-  if (!wallTexCache) wallTexCache = [
-    makeWallTexture(1, false), makeWallTexture(2, false), makeWallTexture(3, false),
-    makeWallTexture(4, true), makeWallTexture(5, true),
-  ];
-  return wallTexCache;
-}
-
-/* Timber-framed plaster facades for the harbor town. */
-let houseTexCache: HTMLCanvasElement[] | null = null;
-
-function makeHouseTexture(seed: number): HTMLCanvasElement {
-  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128;
-  const c = cv.getContext("2d")!;
-  let pi = 0;
-  const pr = () => { const s = Math.sin(seed * 71.3 + (pi++) * 127.1) * 43758.5453; return s - Math.floor(s); };
-  // weathered plaster
-  c.fillStyle = "#6b6355"; c.fillRect(0, 0, 128, 128);
-  for (let k = 0; k < 60; k++) {
-    c.fillStyle = `rgba(${90 + pr() * 40 | 0},${84 + pr() * 34 | 0},${70 + pr() * 28 | 0},.25)`;
-    c.beginPath(); c.arc(pr() * 128, pr() * 128, 4 + pr() * 12, 0, 7); c.fill();
-  }
-  // timber frame
-  c.fillStyle = "#241a10";
-  c.fillRect(0, 0, 128, 9); c.fillRect(0, 119, 128, 9);
-  c.fillRect(0, 0, 8, 128); c.fillRect(120, 0, 8, 128);
-  c.fillRect(60, 0, 7, 128);
-  if (pr() < 0.7) { // a diagonal brace
-    c.save(); c.translate(34, 64); c.rotate(pr() < 0.5 ? 0.5 : -0.5);
-    c.fillRect(-6, -60, 7, 120); c.restore();
-  }
-  // a warm-lit window
-  if (pr() < 0.8) {
-    const wxp = 76 + pr() * 18, wyp = 26 + pr() * 40;
-    c.fillStyle = "#241a10"; c.fillRect(wxp - 3, wyp - 3, 30, 34);
-    c.fillStyle = `rgba(240,180,80,${0.75 + pr() * 0.2})`;
-    c.fillRect(wxp, wyp, 24, 28);
-    c.fillStyle = "#241a10";
-    c.fillRect(wxp + 10.5, wyp, 3, 28); c.fillRect(wxp, wyp + 12.5, 24, 3);
-  }
-  for (let k = 0; k < 200; k++) { // grime
-    c.fillStyle = pr() < 0.5 ? "rgba(0,0,0,.08)" : "rgba(232,217,176,.04)";
-    c.fillRect(pr() * 128, pr() * 128, 1.4, 1.4);
-  }
-  return cv;
-}
-
-function houseTextures(): HTMLCanvasElement[] {
-  if (!houseTexCache) houseTexCache = [makeHouseTexture(1), makeHouseTexture(2), makeHouseTexture(3)];
-  return houseTexCache;
-}
-
+/* ---------- biome textures & the lighting pipeline ---------- */
 function texFor(wx: number, wy: number): HTMLCanvasElement {
-  return state.level === 0
-    ? houseTextures()[cellHash(wx, wy) % 3]
-    : wallTextures()[cellHash(wx, wy) % 5];
+  const biome = biomeFor(state.level);
+  const texes = biomeTextures(biome);
+  return texes[cellHash(wx, wy) % texes.length];
+}
+
+/* Lightmap: the scene is drawn unlit (albedo), then multiplied by an ambient-
+   plus-lights buffer, then emissives (flames, vents, fungi) bloom on top. */
+const lightCv = document.createElement("canvas");
+lightCv.width = 480; lightCv.height = 360;
+const lctx = lightCv.getContext("2d")!;
+let frameLights: PropLight[] = [];
+let glowQ: (() => void)[] = [];
+function addLight(l: PropLight): void { frameLights.push(l); }
+
+function applyLighting(biome: Biome): void {
+  lctx.globalCompositeOperation = "source-over";
+  const g = lctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, biome.ambientTop);
+  g.addColorStop(CY / H, biome.ambientHorizon);
+  g.addColorStop(1, biome.ambientBottom);
+  lctx.fillStyle = g; lctx.fillRect(0, 0, W, H);
+  lctx.globalCompositeOperation = "lighter";
+  const flick = reduceMotion ? 1 : 0.93 + 0.07 * Math.sin(animT * 5.3) + 0.03 * Math.sin(animT * 13.7);
+  const pl = biome.playerLight;
+  const pg = lctx.createRadialGradient(CX, CY + 20, 20, CX, CY + 20, pl.radius * flick);
+  pg.addColorStop(0, pl.color); pg.addColorStop(1, "rgba(0,0,0,0)");
+  lctx.fillStyle = pg; lctx.fillRect(0, 0, W, H);
+  for (const L of frameLights) {
+    const r = Math.max(4, L.r);
+    const lg = lctx.createRadialGradient(L.x, L.y, 1, L.x, L.y, r);
+    lg.addColorStop(0, L.color); lg.addColorStop(1, "rgba(0,0,0,0)");
+    lctx.fillStyle = lg; lctx.fillRect(L.x - r, L.y - r, r * 2, r * 2);
+  }
+  ctx.globalCompositeOperation = "multiply";
+  ctx.drawImage(lightCv, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+}
+
+/* ---------- data-driven props ---------- */
+function basePropCtx(hash: number): PropCtx {
+  return {ctx, cx: 0, fy: 0, s: 0, tx: 0, my: 0, tilt: 0,
+          x0: 0, y0: 0, w: 0, h: 0, t: animT, hash, still: reduceMotion};
+}
+
+function runFloorProps(biome: Biome, d: number, l: number, wx: number, wy: number): void {
+  const h = cellHash(wx, wy);
+  for (const place of biome.floorProps) {
+    if (h % place.mod !== place.rem) continue;
+    if (place.offPath && l === 0) continue;
+    const def = PROPS[place.id];
+    if (!def || def.wall) continue;
+    const p = basePropCtx(h);
+    p.s = HH[Math.min(d + 1, 4)];
+    p.cx = CX + l * (CW[d] + CW[Math.min(d + 1, 4)]) / 2;
+    p.fy = CY + HH[Math.min(d + 1, 4)] * 0.9;
+    def.draw(p);
+    if (def.light) { const li = def.light(p); if (li) addLight(li); }
+    if (def.glow) glowQ.push(() => def.glow!(p));
+    break; // one dressing per cell
+  }
+}
+
+function runWallProps(biome: Biome, d: number, u: number, wx: number, wy: number): void {
+  if (d < 1 || d > 2) return; // close enough to read, far enough to fit
+  const h = cellHash(wx, wy);
+  for (const place of biome.wallProps) {
+    if (h % place.mod !== place.rem) continue;
+    const def = PROPS[place.id];
+    if (!def || !def.wall) continue;
+    const p = basePropCtx(h);
+    const xa = px(d, u), xb = px(d + 1, u);
+    p.s = HH[Math.min(d + 1, 4)] * 0.5;
+    p.tx = xa + (xb - xa) * 0.5;
+    const yT = TYP(d) + (TYP(d + 1) - TYP(d)) * 0.5;
+    const yB = BYP(d) + (BYP(d + 1) - BYP(d)) * 0.5;
+    p.my = yT + (yB - yT) * 0.52;
+    p.tilt = (u < 0 ? 1 : -1) * 0.32;
+    p.x0 = Math.min(xa, xb); p.w = Math.abs(xb - xa);
+    p.y0 = Math.min(TYP(d), TYP(d + 1)); p.h = Math.max(BYP(d), BYP(d + 1)) - p.y0;
+    def.draw(p);
+    if (def.light) { const li = def.light(p); if (li) addLight(li); }
+    if (def.glow) glowQ.push(() => def.glow!(p));
+    break;
+  }
 }
 
 /** Stable per-cell randomness so both co-op screens dress the dungeon alike. */
@@ -147,7 +128,8 @@ function getSprite(key: string): HTMLCanvasElement {
 interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; hue: string; }
 let sparks: Spark[] = [];
 function updateSparks(dt: number): void {
-  if (sparks.length < 22 && rnd() < 0.35)
+  const heavy = biomeFor(state.level).sparks === "heavy-ember";
+  if (sparks.length < (heavy ? 34 : 22) && rnd() < (heavy ? 0.7 : 0.35))
     sparks.push({x: rnd() * W, y: H - 10 - rnd() * 50, vx: (rnd() - 0.5) * 8,
                  vy: -(10 + rnd() * 16), life: 0, max: 2.5 + rnd() * 3,
                  hue: rnd() < 0.7 ? "224,154,60" : "200,80,47"});
@@ -176,7 +158,7 @@ function poly(pts: [number, number][], fill: string): void {
   ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
 }
 
-const DEPTH_DIM = [0, 0.1, 0.3, 0.5, 0.66];
+const DEPTH_DIM = [0, 0.08, 0.24, 0.42, 0.58];
 
 function drawFrontWall(d: number, l: number, wx: number, wy: number): void {
   const x0 = px(d, l - 0.5), x1 = px(d, l + 0.5), y0 = TYP(d), y1 = BYP(d), h = y1 - y0, w = x1 - x0;
@@ -217,47 +199,6 @@ function drawSideWall(d: number, u: number, wx: number, wy: number): void {
   ctx.beginPath(); ctx.moveTo(xa, yat); ctx.lineTo(xa, yab); ctx.stroke();
 }
 
-/** A proper wall sconce: ring mount, shaft leaning off the wall, flame at its tip. */
-function drawTorch(d: number, u: number, wx: number, wy: number): void {
-  if (d === 0) return; // the one at your shoulder would fill the screen
-  const xa = px(d, u), xb = px(d + 1, u);
-  const tx = xa + (xb - xa) * 0.5;
-  const yT = TYP(d) + (TYP(d + 1) - TYP(d)) * 0.5;
-  const yB = BYP(d) + (BYP(d + 1) - BYP(d)) * 0.5;
-  const my = yT + (yB - yT) * 0.52; // mount point on the wall
-  const s = HH[Math.min(d + 1, 4)] * 0.5;
-  const phase = (cellHash(wx, wy) % 97) / 97 * 6.28;
-  const fl = reduceMotion ? 1 : 0.85 + 0.22 * Math.sin(animT * 9 + phase) + 0.08 * Math.sin(animT * 23 + phase * 2);
-  const tilt = (u < 0 ? 1 : -1) * 0.32; // leans off the wall toward the corridor
-  const tipX = tx + Math.sin(tilt) * s * 0.62, tipY = my - Math.cos(tilt) * s * 0.62;
-  // pool of light around the flame
-  const glow = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, s * 2.6 * fl);
-  glow.addColorStop(0, "rgba(240,180,80,.3)");
-  glow.addColorStop(0.5, "rgba(224,154,60,.12)");
-  glow.addColorStop(1, "rgba(224,154,60,0)");
-  ctx.fillStyle = glow; ctx.fillRect(tipX - s * 3, tipY - s * 3, s * 6, s * 6);
-  // iron ring mount on the stone
-  ctx.fillStyle = "#17100a";
-  ctx.fillRect(tx - s * 0.11, my - s * 0.06, s * 0.22, s * 0.24);
-  // shaft with wrapped head
-  ctx.save(); ctx.translate(tx, my); ctx.rotate(tilt);
-  ctx.fillStyle = "#3a2a18"; ctx.fillRect(-s * 0.055, -s * 0.62, s * 0.11, s * 0.68);
-  ctx.fillStyle = "#57422d"; ctx.fillRect(-s * 0.085, -s * 0.74, s * 0.17, s * 0.16);
-  ctx.restore();
-  // flame licking up from the head
-  const fh = s * 0.55 * fl;
-  const fg = ctx.createRadialGradient(tipX, tipY - fh * 0.4, 0, tipX, tipY - fh * 0.4, fh);
-  fg.addColorStop(0, "rgba(255,242,190,.95)");
-  fg.addColorStop(0.35, "rgba(242,172,64,.85)");
-  fg.addColorStop(0.7, "rgba(200,80,40,.4)");
-  fg.addColorStop(1, "rgba(200,80,40,0)");
-  ctx.fillStyle = fg;
-  ctx.beginPath();
-  ctx.ellipse(tipX, tipY - fh * 0.4, fh * 0.45, fh * 0.8,
-    (reduceMotion ? 0 : Math.sin(animT * 11 + phase) * 0.12) + tilt * 0.4, 0, Math.PI * 2);
-  ctx.fill();
-}
-
 /** Town doors: facade texture, arched door, lantern, and a hanging trade sign. */
 function drawDoorFace(d: number, l: number, door: string, wx: number, wy: number): void {
   drawFrontWall(d, l, wx, wy);
@@ -273,12 +214,12 @@ function drawDoorFace(d: number, l: number, door: string, wx: number, wy: number
   ctx.strokeStyle = "#3a2a18"; ctx.lineWidth = Math.max(1, w * 0.012); ctx.stroke();
   ctx.fillStyle = "#8a7a52"; // handle
   ctx.beginPath(); ctx.arc(cx0 + dw * 0.28, y1 - dh * 0.4, Math.max(1, w * 0.012), 0, Math.PI * 2); ctx.fill();
-  // lantern beside the door
+  // lantern beside the door — a real light source
   const lx = dx - w * 0.09, ly = dy + dh * 0.18;
-  const lg = ctx.createRadialGradient(lx, ly, 1, lx, ly, w * 0.14);
-  lg.addColorStop(0, "rgba(240,180,80,.5)"); lg.addColorStop(1, "rgba(240,180,80,0)");
-  ctx.fillStyle = lg; ctx.fillRect(lx - w * 0.15, ly - w * 0.15, w * 0.3, w * 0.3);
-  ctx.fillStyle = "#f0b450"; ctx.fillRect(lx - w * 0.014, ly - w * 0.02, w * 0.028, w * 0.04);
+  addLight({x: lx, y: ly, r: w * 0.55, color: "rgba(250,200,120,.8)"});
+  glowQ.push(() => {
+    ctx.fillStyle = "#f0b450"; ctx.fillRect(lx - w * 0.014, ly - w * 0.02, w * 0.028, w * 0.04);
+  });
   // hanging sign
   const sy = dy - h * 0.16, sw2 = w * 0.24, sh2 = h * 0.13, sx = cx0 - sw2 / 2;
   ctx.strokeStyle = "#241a10"; ctx.lineWidth = Math.max(1, w * 0.008);
@@ -331,78 +272,6 @@ function drawBeam(d: number): void {
   ctx.beginPath(); ctx.moveTo(xt(t0, -0.55), yt(t0)); ctx.lineTo(xt(t0, 0.55), yt(t0)); ctx.stroke();
 }
 
-/** Puddles that catch the torchlight, rubble, and cracked flagstones —
-    or, in town: lamp posts, crates, and rain-washed cobbles. */
-function drawFloorProps(d: number, l: number, wx: number, wy: number): void {
-  const h = cellHash(wx, wy);
-  const s = HH[Math.min(d + 1, 4)];
-  const cxm = CX + l * (CW[d] + CW[Math.min(d + 1, 4)]) / 2;
-  const fy = CY + HH[Math.min(d + 1, 4)] * 0.9;
-  if (state.level === 0) {
-    if (h % 6 === 2 && l !== 0) { // lamp post (kept off the walking line)
-      const lh = s * 1.5;
-      ctx.fillStyle = "#1a1410";
-      ctx.fillRect(cxm - s * 0.035, fy - lh, s * 0.07, lh);
-      ctx.fillRect(cxm - s * 0.12, fy - lh, s * 0.24, s * 0.05);
-      const lg = ctx.createRadialGradient(cxm, fy - lh + s * 0.12, 1, cxm, fy - lh + s * 0.12, s * 0.55);
-      lg.addColorStop(0, "rgba(240,190,110,.55)"); lg.addColorStop(1, "rgba(240,190,110,0)");
-      ctx.fillStyle = lg; ctx.fillRect(cxm - s, fy - lh - s * 0.5, s * 2, s * 1.4);
-      ctx.fillStyle = "#f0c060";
-      ctx.fillRect(cxm - s * 0.045, fy - lh + s * 0.06, s * 0.09, s * 0.12);
-    } else if (h % 7 === 3 && l !== 0) { // stacked crates & a barrel
-      ctx.fillStyle = "#3a2c1c"; ctx.fillRect(cxm - s * 0.3, fy - s * 0.34, s * 0.34, s * 0.34);
-      ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.lineWidth = 1;
-      ctx.strokeRect(cxm - s * 0.3, fy - s * 0.34, s * 0.34, s * 0.34);
-      ctx.fillStyle = "#46362a";
-      ctx.beginPath(); ctx.ellipse(cxm + s * 0.22, fy - s * 0.18, s * 0.14, s * 0.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,.35)";
-      ctx.beginPath(); ctx.ellipse(cxm + s * 0.22, fy - s * 0.26, s * 0.14, s * 0.05, 0, 0, Math.PI * 2); ctx.stroke();
-    } else if (h % 5 === 0) { // rain still standing between the cobbles
-      ctx.fillStyle = "rgba(26,36,52,.5)";
-      ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.1, s * 0.45, s * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-      const sh2 = reduceMotion ? 0.5 : 0.3 + 0.5 * Math.abs(Math.sin(animT * 1.5 + h));
-      ctx.fillStyle = `rgba(180,200,220,${0.08 + 0.1 * sh2})`;
-      ctx.beginPath(); ctx.ellipse(cxm - s * 0.1, fy - s * 0.12, s * 0.18, s * 0.04, 0, 0, Math.PI * 2); ctx.fill();
-    }
-    return;
-  }
-  if (h % 5 === 0) { // standing water
-    ctx.fillStyle = "rgba(24,38,52,.6)";
-    ctx.beginPath(); ctx.ellipse(cxm + ((h % 13) - 6) * s * 0.03, fy - s * 0.1, s * 0.55, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
-    const sh = reduceMotion ? 0.5 : 0.3 + 0.5 * Math.abs(Math.sin(animT * 1.8 + h));
-    ctx.fillStyle = `rgba(150,180,205,${0.1 + 0.12 * sh})`;
-    ctx.beginPath(); ctx.ellipse(cxm - s * 0.13, fy - s * 0.13, s * 0.2, s * 0.045, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = `rgba(224,154,60,${0.06 + 0.09 * sh})`;
-    ctx.beginPath(); ctx.ellipse(cxm + s * 0.16, fy - s * 0.08, s * 0.17, s * 0.04, 0, 0, Math.PI * 2); ctx.fill();
-    if (!reduceMotion) { // a drop falls from the dark above
-      const dp = (animT * (0.35 + (h % 5) * 0.08) + h * 0.13) % 3;
-      if (dp < 0.3) {
-        const t2 = dp / 0.3;
-        const ceilY = CY - HH[Math.min(d + 1, 4)] * 0.9;
-        const dropY = ceilY + (fy - s * 0.1 - ceilY) * t2;
-        ctx.fillStyle = "rgba(170,200,220,.5)";
-        ctx.fillRect(cxm - 0.7, dropY, 1.4, Math.max(2, s * 0.06));
-      }
-    }
-  } else if (h % 7 === 3) { // rubble
-    for (let i = 0; i < 4; i++) {
-      const p2 = ((h >> (i * 3)) % 17) / 17;
-      ctx.fillStyle = `rgb(${70 + p2 * 30 | 0},${55 + p2 * 22 | 0},${42 + p2 * 15 | 0})`;
-      ctx.beginPath();
-      ctx.ellipse(cxm + (p2 - 0.5) * s * 0.85, fy - s * 0.06 - (i % 2) * s * 0.05,
-        s * (0.06 + p2 * 0.07), s * (0.04 + p2 * 0.045), 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (h % 6 === 1) { // cracked flagstone
-    ctx.strokeStyle = "rgba(0,0,0,.32)"; ctx.lineWidth = Math.max(1, s * 0.028);
-    ctx.beginPath();
-    ctx.moveTo(cxm - s * 0.4, fy - s * 0.04);
-    ctx.lineTo(cxm - s * 0.1, fy - s * 0.16);
-    ctx.lineTo(cxm + s * 0.22, fy - s * 0.09);
-    ctx.stroke();
-  }
-}
-
 function drawFeature(c: string, d: number, l: number): void {
   const cxm = CX + l * (CW[d] + CW[Math.min(d + 1, 4)]) / 2;
   const s = HH[Math.min(d + 1, 4)];               // scale unit
@@ -418,25 +287,28 @@ function drawFeature(c: string, d: number, l: number): void {
       ctx.fillStyle = c === "S" ? `rgba(10,7,5,${0.5 + t * 0.5})` : `rgba(224,154,60,${0.12 + t * 0.1})`;
       ctx.fillRect(cxm - w2 / 2, fy - s * 0.16 * (i + 1), w2, s * 0.16);
     }
-  } else if (c === "F") { // fountain
+  } else if (c === "F") { // fountain — cool light welling up
     ctx.fillStyle = "#3d5a6b"; ctx.beginPath();
     ctx.ellipse(cxm, fy - s * 0.2, s * 0.55, s * 0.22, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#7fa8bd"; ctx.beginPath();
     ctx.ellipse(cxm, fy - s * 0.24, s * 0.4, s * 0.14, 0, 0, Math.PI * 2); ctx.fill();
-    const gl = ctx.createRadialGradient(cxm, fy - s * 0.5, 2, cxm, fy - s * 0.5, s * 0.8);
-    gl.addColorStop(0, "rgba(127,168,189,.35)"); gl.addColorStop(1, "rgba(127,168,189,0)");
-    ctx.fillStyle = gl; ctx.fillRect(cxm - s, fy - s * 1.4, s * 2, s * 1.6);
+    addLight({x: cxm, y: fy - s * 0.4, r: s * 2.2, color: "rgba(120,190,230,.6)"});
+    glowQ.push(() => {
+      const sh = reduceMotion ? 0.8 : 0.6 + 0.4 * Math.sin(animT * 2.4);
+      ctx.fillStyle = `rgba(160,215,240,${0.3 * sh})`;
+      ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.25, s * 0.32, s * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+    });
   } else if (c === "B") { // the Pyrelord waits, breathing light
     const pulse = reduceMotion ? 1 : 0.75 + 0.25 * Math.sin(animT * 2.6);
     ctx.fillStyle = "rgba(20,10,6,.9)"; ctx.beginPath();
     ctx.moveTo(cxm, fy - s * 1.5); ctx.lineTo(cxm + s * 0.7, fy); ctx.lineTo(cxm - s * 0.7, fy);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#e09a3c";
-    ctx.fillRect(cxm - s * 0.18, fy - s * 1.05, s * 0.1, s * 0.07);
-    ctx.fillRect(cxm + s * 0.08, fy - s * 1.05, s * 0.1, s * 0.07);
-    const gl = ctx.createRadialGradient(cxm, fy - s * 0.7, 4, cxm, fy - s * 0.7, s * 1.5 * pulse);
-    gl.addColorStop(0, `rgba(200,80,47,${0.34 * pulse})`); gl.addColorStop(1, "rgba(200,80,47,0)");
-    ctx.fillStyle = gl; ctx.fillRect(cxm - s * 1.8, fy - s * 2.3, s * 3.6, s * 2.8);
+    addLight({x: cxm, y: fy - s * 0.7, r: s * 3 * pulse, color: `rgba(220,80,45,${0.6 * pulse})`});
+    glowQ.push(() => { // eyes that survive the dark
+      ctx.fillStyle = "#ffb44c";
+      ctx.fillRect(cxm - s * 0.18, fy - s * 1.05, s * 0.1, s * 0.07);
+      ctx.fillRect(cxm + s * 0.08, fy - s * 1.05, s * 0.1, s * 0.07);
+    });
   } else if (c === "G") { // the signal fire: stone ring, driftwood, maybe flame
     ctx.fillStyle = "#3a3a3a";
     ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.06, s * 0.5, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
@@ -448,13 +320,16 @@ function drawFeature(c: string, d: number, l: number): void {
     const lit = net.role === "host" || net.connected;
     if (lit) {
       const fl2 = reduceMotion ? 1 : 0.8 + 0.25 * Math.sin(animT * 8);
-      const fh2 = s * 0.8 * fl2;
-      const fg2 = ctx.createRadialGradient(cxm, fy - s * 0.45, 2, cxm, fy - s * 0.45, fh2);
-      fg2.addColorStop(0, "rgba(255,242,190,.95)");
-      fg2.addColorStop(0.4, "rgba(242,172,64,.8)");
-      fg2.addColorStop(1, "rgba(200,80,40,0)");
-      ctx.fillStyle = fg2;
-      ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.5, fh2 * 0.45, fh2 * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      addLight({x: cxm, y: fy - s * 0.5, r: s * 3.2 * fl2, color: "rgba(255,180,90,.85)"});
+      glowQ.push(() => {
+        const fh2 = s * 0.8 * fl2;
+        const fg2 = ctx.createRadialGradient(cxm, fy - s * 0.45, 2, cxm, fy - s * 0.45, fh2);
+        fg2.addColorStop(0, "rgba(255,242,190,.95)");
+        fg2.addColorStop(0.4, "rgba(242,172,64,.8)");
+        fg2.addColorStop(1, "rgba(200,80,40,0)");
+        ctx.fillStyle = fg2;
+        ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.5, fh2 * 0.45, fh2 * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      });
     } else {
       ctx.fillStyle = "rgba(120,130,140,.25)"; // cold ash awaiting a spark
       ctx.beginPath(); ctx.ellipse(cxm, fy - s * 0.18, s * 0.2, s * 0.08, 0, 0, Math.PI * 2); ctx.fill();
@@ -474,21 +349,24 @@ function drawFeature(c: string, d: number, l: number): void {
     }
     ctx.fillStyle = "#3a2a18"; ctx.fillRect(cxm - s * 0.55, fy - s * 0.4, s * 1.1, s * 0.12);
     ctx.fillStyle = "#57422d"; ctx.fillRect(cxm - s * 0.55, fy - s * 0.28, s * 1.1, s * 0.28);
-  } else if (c === "E") { // way out: daylight arch with a falling shaft of light
+  } else if (c === "E") { // way out: pale night spilling down the stair
     const shimmer = reduceMotion ? 0 : Math.sin(animT * 1.7) * 0.03;
     ctx.fillStyle = `rgba(232,217,176,${0.16 + shimmer})`;
     ctx.beginPath();
     ctx.moveTo(cxm - s * 0.45, fy); ctx.lineTo(cxm - s * 0.45, fy - s * 0.9);
     ctx.arc(cxm, fy - s * 0.9, s * 0.45, Math.PI, 0);
     ctx.lineTo(cxm + s * 0.45, fy); ctx.closePath(); ctx.fill();
-    const ray = ctx.createLinearGradient(0, fy - s * 1.3, 0, fy + s * 0.6);
-    ray.addColorStop(0, `rgba(232,217,176,${0.12 + shimmer})`);
-    ray.addColorStop(1, "rgba(232,217,176,0)");
-    ctx.fillStyle = ray;
-    ctx.beginPath();
-    ctx.moveTo(cxm - s * 0.45, fy - s * 1.3); ctx.lineTo(cxm + s * 0.45, fy - s * 1.3);
-    ctx.lineTo(cxm + s * 1.0, fy + s * 0.6); ctx.lineTo(cxm - s * 1.0, fy + s * 0.6);
-    ctx.closePath(); ctx.fill();
+    addLight({x: cxm, y: fy - s * 0.7, r: s * 2.4, color: "rgba(200,210,230,.5)"});
+    glowQ.push(() => {
+      const ray = ctx.createLinearGradient(0, fy - s * 1.3, 0, fy + s * 0.6);
+      ray.addColorStop(0, `rgba(232,217,176,${0.12 + shimmer})`);
+      ray.addColorStop(1, "rgba(232,217,176,0)");
+      ctx.fillStyle = ray;
+      ctx.beginPath();
+      ctx.moveTo(cxm - s * 0.45, fy - s * 1.3); ctx.lineTo(cxm + s * 0.45, fy - s * 1.3);
+      ctx.lineTo(cxm + s * 1.0, fy + s * 0.6); ctx.lineTo(cxm - s * 1.0, fy + s * 0.6);
+      ctx.closePath(); ctx.fill();
+    });
   }
   ctx.restore();
 }
@@ -513,7 +391,9 @@ function drawMob(key: string, d: number, l: number, wx: number, wy: number): voi
 }
 
 export function renderView(): void {
-  const town = state.level === 0;
+  const biome = biomeFor(state.level);
+  const town = biome.sky;
+  frameLights = []; glowQ = [];
   if (town) {
     // night sky over the harbor
     let g = ctx.createLinearGradient(0, 0, 0, CY);
@@ -580,11 +460,11 @@ export function renderView(): void {
         if (d < 4) { // side faces toward corridor center, some carrying torches
           if (l > 0 && !isWall(d, l - 1)) {
             drawSideWall(d, l - 0.5, wx, wy);
-            if (!town && d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l - 0.5, wx, wy);
+            runWallProps(biome, d, l - 0.5, wx, wy);
           }
           if (l < 0 && !isWall(d, l + 1)) {
             drawSideWall(d, l + 0.5, wx, wy);
-            if (!town && d <= 2 && cellHash(wx, wy) % 3 === 0) drawTorch(d, l + 0.5, wx, wy);
+            runWallProps(biome, d, l + 0.5, wx, wy);
           }
         }
         if (d >= 1) {
@@ -597,7 +477,7 @@ export function renderView(): void {
         if (c !== "." && c !== "#" && Math.abs(l) <= 1 && d <= 3 && !(c === "E" && d === 0 && l === 0))
           feats.push([c, d, l]);
         if (Math.abs(l) <= 2 && d >= 1 && d <= 3) props.push([d, l, wx, wy]);
-        if (!town && l === 0 && d >= 1 && d <= 3 && cellHash(wx, wy) % 4 === 2) beams.push(d);
+        if (biome.beams && l === 0 && d >= 1 && d <= 3 && cellHash(wx, wy) % 4 === 2) beams.push(d);
         if (Math.abs(l) <= 2 && d >= 1 && d <= 3) {
           const mob = mobAt(state.level, wx, wy);
           if (mob) mobsHere.push([mob.key, d, l, wx, wy]);
@@ -605,23 +485,15 @@ export function renderView(): void {
       }
     }
     for (const bd of beams) drawBeam(bd);
-    for (const [pd, pl, wx, wy] of props) drawFloorProps(pd, pl, wx, wy);
+    for (const [pd, pl, wx, wy] of props) runFloorProps(biome, pd, pl, wx, wy);
     for (const [c, fd, fl] of feats) drawFeature(c, fd, fl);
     for (const [k, md, ml, wx, wy] of mobsHere) drawMob(k, md, ml, wx, wy);
   }
-  if (!town) drawSparks(); // embers belong to the deep
-  // ambient light — the party's torch below, cool moonlight above ground
-  const tflick = reduceMotion ? 1 : 0.94 + 0.06 * Math.sin(animT * 5.3) + 0.03 * Math.sin(animT * 13.7);
-  const tg = ctx.createRadialGradient(CX, CY + 16, 26, CX, CY + 16, 290 * tflick);
-  if (town) {
-    tg.addColorStop(0, "rgba(150,170,205,.07)");
-    tg.addColorStop(0.5, "rgba(150,170,205,.02)");
-  } else {
-    tg.addColorStop(0, "rgba(224,154,60,.13)");
-    tg.addColorStop(0.45, "rgba(224,154,60,.04)");
-  }
-  tg.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = tg; ctx.fillRect(0, 0, W, H);
+  // shade the world: ambient + every collected light, multiplied over the albedo
+  applyLighting(biome);
+  // emissives bloom after the lighting pass
+  for (const gfn of glowQ) gfn();
+  if (biome.sparks !== "none") drawSparks();
   // darkness vignette
   const v = ctx.createRadialGradient(CX, CY, 60, CX, CY, 300);
   const a = reduceMotion ? 0.42 : 0.40 + 0.035 * Math.sin(animT * 4.1);

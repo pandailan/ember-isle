@@ -31,7 +31,9 @@ Source is strict-mode TypeScript in `src/`:
 | `src/traits.ts` | Trait & skill-tree content plus every derived-stat hook |
 | `src/cards.ts` | Card generation, rarity rolls, naming, save migration |
 | `src/state.ts` | Runtime state, versioned saves, map queries |
-| `src/render.ts` | First-person canvas renderer, automap, monster portraits |
+| `src/biomes.ts` | Biome structs: textures, ambient light, prop placement per level |
+| `src/props.ts` | Prop registry: draw + light + glow definitions (torches, vents…) |
+| `src/render.ts` | First-person renderer: albedo/lightmap/emissive passes, automap |
 | `src/audio.ts` | Procedural WebAudio sfx and ambient scene music |
 | `src/net.ts` | PeerJS link (host/join, message framing) |
 | `src/ui.ts` | Router, party plaques, shared combat widgets |
