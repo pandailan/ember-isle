@@ -45,7 +45,11 @@
   synced to co-op guests) drives a keyframed sky: dawn, day, golden hour, dusk,
   and night, with a sun and moon that cross the sky and stars and fireflies
   that belong to the dark. Weather fronts roll over the isle — sea mist, rain,
-  and storms with lightning, thunder, and a rain soundscape.
+  and storms with lightning, thunder, and a rain soundscape. Lamps, torches,
+  and door-flames burn only while the sun is down (a storm counts as dark),
+  and the world is scattered with life: banners, handcarts, and grain sacks in
+  the harbor; reeds, fallen logs, and standing stones on the moor; stalagmites
+  and old bones in the deeps.
 
 ## Next
 

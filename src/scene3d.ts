@@ -66,6 +66,9 @@ let sunSpr: THREE.Sprite | null = null;
 let plScale = 1;      // sky-driven player-light multiplier (daylight dims the torch)
 let skyBloom = 0.45;
 let nightK = 1;       // how dark the sky is (gates stars and fireflies)
+let lampK = 1;        // lamps burn only when the sun doesn't (storms count as dark)
+/* emissive materials that follow the lamps: lamppost heads, glowing caps */
+let dimmables: {m: THREE.MeshStandardMaterial; base: number}[] = [];
 let flashV = 0; let nextFlash = 0; let thunderAt = -1;
 let rain: THREE.LineSegments | null = null;
 let rainOff: Float32Array | null = null;
@@ -348,6 +351,7 @@ const PROPS3D: Record<string, Prop3D> = {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.95, 6), ironMat);
     pole.position.set(px2, 0.48, pz2); p.group.add(pole);
     const lampMat = new THREE.MeshStandardMaterial({color: 0xffc86a, emissive: 0xffa838, emissiveIntensity: 2.4});
+    dimmables.push({m: lampMat, base: 2.4});
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 0.09), lampMat);
     lamp.position.set(px2, 0.95, pz2); p.group.add(lamp);
     addAnchor(new THREE.Vector3(px2, 0.95, pz2), 0xffc06a, 5, 5.5, 0.06);
@@ -380,6 +384,7 @@ const PROPS3D: Record<string, Prop3D> = {
   crack(p) { /* engraved in the floor texture's spirit — skipped in 3D */ },
   mushrooms(p) {
     const capMat = new THREE.MeshStandardMaterial({color: 0x5a7a8a, emissive: 0x58c8f0, emissiveIntensity: 1.1});
+    dimmables.push({m: capMat, base: 1.1});
     for (let i = 0; i < 3; i++) {
       const mh = 0.06 + ((p.hash >> (i * 2)) % 4) * 0.015;
       const mx = p.x + 0.35 + ((p.hash >> i) % 7) / 7 * 0.3, mz = p.z + 0.35 + ((p.hash >> (i + 2)) % 7) / 7 * 0.3;
@@ -395,6 +400,86 @@ const PROPS3D: Record<string, Prop3D> = {
     const pos = new THREE.Vector3(p.x + 0.5, 0.02, p.z + 0.5);
     addFlame(p.group, pos.x, 0.06, pos.z, "rgba(255,110,40,.6)", 0.42);
     addAnchor(pos, 0xff6428, 3.5, 3.5, 0.6);
+  },
+  cart(p) { // a handcart left by the road
+    const cx2 = p.x + 0.66, cz2 = p.z + 0.34;
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.045, 0.5), woodMat);
+    bed.position.set(cx2, 0.2, cz2); bed.rotation.y = (p.hash % 7) / 7 - 0.5; bed.rotation.z = 0.14;
+    p.group.add(bed);
+    for (const dx of [-0.19, 0.19]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 10), woodMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(cx2 + dx, 0.1, cz2 - 0.04);
+      p.group.add(wheel);
+    }
+  },
+  sacks(p) { // grain sacks slumped against a wall
+    const mat = new THREE.MeshStandardMaterial({color: 0x8a7a58, roughness: 0.95});
+    for (let i = 0; i < 2 + (p.hash % 2); i++) {
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.1 + ((p.hash >> i) % 4) * 0.015, 7, 6), mat);
+      s.position.set(p.x + 0.25 + ((p.hash >> (i * 2)) % 5) / 5 * 0.24, 0.07,
+                     p.z + 0.66 + ((p.hash >> (i + 3)) % 4) / 4 * 0.16);
+      s.scale.y = 0.62;
+      p.group.add(s);
+    }
+  },
+  banner(p) { // dyed cloth hung on a facade
+    const [fx, fz] = p.faceDir!;
+    const cols = [0x8a3a28, 0x2e4a68, 0x4e5a2e, 0x6a4a78];
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.5),
+      new THREE.MeshStandardMaterial({color: cols[p.hash % cols.length], roughness: 0.9, side: THREE.DoubleSide}));
+    cloth.position.set(p.x + 0.5 + fx * 0.515, 0.6, p.z + 0.5 + fz * 0.515);
+    cloth.lookAt(p.x + 0.5 + fx * 2, 0.6, p.z + 0.5 + fz * 2);
+    p.group.add(cloth);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 5), woodMat);
+    rod.position.set(p.x + 0.5 + fx * 0.53, 0.88, p.z + 0.5 + fz * 0.53);
+    if (fx !== 0) rod.rotation.x = Math.PI / 2; else rod.rotation.z = Math.PI / 2;
+    p.group.add(rod);
+  },
+  reeds(p) { // marsh grass in a wind-bent clump
+    const mat = new THREE.MeshStandardMaterial({color: 0x46562c, roughness: 0.95});
+    for (let i = 0; i < 6; i++) {
+      const bh = 0.14 + ((p.hash >> i) % 5) * 0.035;
+      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.012, bh, 4), mat);
+      blade.position.set(p.x + 0.18 + ((p.hash >> (i * 2)) % 9) / 9 * 0.3, bh / 2,
+                         p.z + 0.6 + ((p.hash >> (i + 4)) % 7) / 7 * 0.26);
+      blade.rotation.z = (((p.hash >> i) % 7) - 3) * 0.05;
+      p.group.add(blade);
+    }
+  },
+  menhir(p) { // a leaning stone somebody raised long ago
+    const stone = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6 + (p.hash % 4) * 0.08, 0.12), boulderMat);
+    stone.position.set(p.x + 0.26, 0.3, p.z + 0.72);
+    stone.rotation.set((((p.hash >> 3) % 5) - 2) * 0.04, (p.hash % 7) / 7 * 3, ((p.hash % 5) - 2) * 0.06);
+    p.group.add(stone);
+  },
+  log(p) { // a fallen trunk going soft with moss
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.5, 6), woodMat);
+    trunk.rotation.z = Math.PI / 2; trunk.rotation.y = (p.hash % 9) / 9 * 3;
+    trunk.position.set(p.x + 0.5 + ((p.hash % 5) - 2) * 0.06, 0.05, p.z + 0.74);
+    p.group.add(trunk);
+  },
+  stalagmite(p) {
+    for (let i = 0; i < 2 + (p.hash % 2); i++) {
+      const sh = 0.12 + ((p.hash >> (i * 2)) % 6) * 0.05;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05 + ((p.hash >> i) % 3) * 0.02, sh, 6), stoneMat);
+      spike.position.set(p.x + 0.2 + ((p.hash >> (i * 3)) % 8) / 8 * 0.28, sh / 2,
+                         p.z + 0.6 + ((p.hash >> (i + 5)) % 6) / 6 * 0.24);
+      p.group.add(spike);
+    }
+  },
+  bones(p) { // someone came this far
+    const mat = new THREE.MeshStandardMaterial({color: 0xb8ad98, roughness: 0.9});
+    for (let i = 0; i < 3; i++) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.14, 4), mat);
+      b.rotation.set(Math.PI / 2, 0, (p.hash >> i) % 7);
+      b.position.set(p.x + 0.62 + ((p.hash >> (i * 2)) % 6) / 6 * 0.2, 0.015,
+                     p.z + 0.28 + ((p.hash >> (i + 2)) % 6) / 6 * 0.2);
+      p.group.add(b);
+    }
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.045, 7, 6), mat);
+    skull.position.set(p.x + 0.7, 0.04, p.z + 0.35);
+    p.group.add(skull);
   },
   tree(p) {
     // a windswept moor pine, leaning off the path
@@ -436,7 +521,7 @@ export function buildLevel(): void {
   worldGroup = new THREE.Group();
   scene.add(worldGroup);
   anchors = []; consumables = []; flameSprites = []; fireGroup = null; labels = [];
-  starsMat = null; moonSpr = null; sunSpr = null;
+  starsMat = null; moonSpr = null; sunSpr = null; dimmables = [];
   for (const mv of mobViews) { scene.remove(mv.sprite); scene.remove(mv.shadow); }
   mobViews = [];
 
@@ -569,7 +654,7 @@ export function buildLevel(): void {
         worldGroup.add(sp);
         labels.push({sprite: sp, pos: sp.position.clone()});
       }
-    } else if (!town) {
+    } else { // plain walls of any biome dress themselves from the biome's wall props
       const face = faceToOpen(map, x, y);
       if (face) {
         for (const place of biome.wallProps) {
@@ -785,6 +870,7 @@ function updateSky(dt: number, biome: Biome): void {
   hemi.intensity = hemiI;
   skyBloom = 0.3 + 0.15 * plScale;
   nightK = stars;
+  lampK = Math.min(1, Math.max(0, 1 - sun * 1.15));
   // lights across the sky
   const mw = MAPS[state.level][0].length, mh = MAPS[state.level].length;
   if (starsMat) starsMat.opacity = 0.8 * stars;
@@ -846,6 +932,8 @@ export function frame(dt: number): void {
   playerLight.intensity = reduceMotion ? plBase
     : plBase * (0.93 + 0.07 * Math.sin(animT * 5.3) + 0.03 * Math.sin(animT * 13.7));
 
+  // in daylight the lamps go out (underground never sees the sun)
+  const lightMul = biome.sky ? lampK : 1;
   // dynamic light pool: nearest anchors win
   const sorted = anchors.slice().sort((a, b) =>
     a.pos.distanceToSquared(camera.position) - b.pos.distanceToSquared(camera.position));
@@ -856,12 +944,14 @@ export function frame(dt: number): void {
     l.color.set(a.color);
     l.distance = a.distance;
     const fl = reduceMotion ? 1 : 1 - a.flicker / 2 + a.flicker * Math.sin(animT * 9 + a.phase) * 0.5;
-    l.intensity = a.intensity * fl;
+    l.intensity = a.intensity * fl * lightMul;
   }
-  // flames breathe
-  if (!reduceMotion) for (const f of flameSprites) {
-    f.sprite.scale.setScalar(f.base * (0.85 + 0.2 * Math.sin(animT * 8 + f.phase)));
+  // flames breathe, and gutter out under the sun
+  for (const f of flameSprites) {
+    f.sprite.material.opacity = lightMul;
+    if (!reduceMotion) f.sprite.scale.setScalar(f.base * (0.85 + 0.2 * Math.sin(animT * 8 + f.phase)));
   }
+  for (const dm of dimmables) dm.m.emissiveIntensity = dm.base * (0.1 + 0.9 * lightMul);
   // the sea drifts
   if (!reduceMotion && waterTexTile && waterTexSea) {
     waterTexTile.offset.x += dt * 0.012; waterTexTile.offset.y += dt * 0.004;

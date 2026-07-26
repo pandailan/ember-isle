@@ -53,9 +53,11 @@ export const BIOMES: Record<string, Biome> = {
     beams: false,
     tex: {style: "house", base: [107, 99, 85], mortar: "#241a10",
           blockW: [20, 48], blockH: [17, 32], crackDensity: 0, variants: 3},
-    wallProps: [],
+    wallProps: [{id: "banner", mod: 5, rem: 1}],
     floorProps: [
       {id: "lamppost", mod: 6, rem: 2, offPath: true},
+      {id: "cart", mod: 11, rem: 5, offPath: true},
+      {id: "sacks", mod: 8, rem: 1, offPath: true},
       {id: "crate", mod: 7, rem: 3, offPath: true},
       {id: "puddle", mod: 5, rem: 0},
     ],
@@ -76,6 +78,8 @@ export const BIOMES: Record<string, Biome> = {
           mossColor: "rgba(92,122,58,", variants: 5},
     wallProps: [{id: "torch", mod: 3, rem: 0}],
     floorProps: [
+      {id: "stalagmite", mod: 6, rem: 4, offPath: true},
+      {id: "bones", mod: 11, rem: 6, offPath: true},
       {id: "puddle", mod: 5, rem: 0},
       {id: "rubble", mod: 7, rem: 3},
       {id: "crack", mod: 6, rem: 1},
@@ -102,6 +106,8 @@ export const BIOMES: Record<string, Biome> = {
     ],
     floorProps: [
       {id: "embervent", mod: 6, rem: 0},
+      {id: "bones", mod: 9, rem: 4, offPath: true},
+      {id: "stalagmite", mod: 7, rem: 5, offPath: true},
       {id: "rubble", mod: 5, rem: 1},
       {id: "crack", mod: 4, rem: 2},
     ],
@@ -123,7 +129,10 @@ export const BIOMES: Record<string, Biome> = {
     wallProps: [],
     floorProps: [
       {id: "tree", mod: 4, rem: 1, offPath: true},
+      {id: "menhir", mod: 13, rem: 7, offPath: true},
+      {id: "log", mod: 8, rem: 5, offPath: true},
       {id: "rubble", mod: 6, rem: 2},
+      {id: "reeds", mod: 5, rem: 2},
       {id: "mushrooms", mod: 9, rem: 4, offPath: true},
       {id: "puddle", mod: 7, rem: 3},
     ],
