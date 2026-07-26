@@ -9,7 +9,8 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { MAPS, TOWN_DOORS, ENEMIES } from "./data";
 import { state, cellAt } from "./state";
-import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, BIOMES, type Biome } from "./biomes";
+import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome } from "./biomes";
+import { ASSETS, FEATURE_ASSET, bindAssetFx } from "./assets3d";
 import { net } from "./net";
 import { reduceMotion, rnd } from "./util";
 import { hourOf } from "./daytime";
@@ -119,52 +120,8 @@ let lhLampMat: THREE.MeshStandardMaterial | null = null;
 let lhGlow: THREE.Sprite | null = null;
 
 function buildLighthouse(px: number, pz: number): void {
-  const g = new THREE.Group();
-  g.position.set(px, 0, pz);
-  // the rock it stands on
-  for (const [ox, oz, r] of [[0, 0, 1.25], [0.9, 0.5, 0.8], [-0.8, -0.4, 0.7]] as [number, number, number][]) {
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), boulderMat);
-    rock.position.set(ox, r * 0.3, oz); rock.scale.y = 0.6;
-    g.add(rock);
-  }
-  // banded tower
-  const bands = [0xb8b0a2, 0x9a3c2c, 0xb8b0a2];
-  for (let i = 0; i < 3; i++) {
-    const r0 = 0.82 - i * 0.14, r1 = 0.68 - i * 0.14;
-    const seg = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, 1.75, 10),
-      new THREE.MeshStandardMaterial({color: bands[i], roughness: 0.9}));
-    seg.position.y = 0.7 + 1.75 * i + 0.875;
-    g.add(seg);
-  }
-  // gallery + lantern room
-  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.16, 10), ironMat);
-  gallery.position.y = 0.7 + 5.25 + 0.08;
-  g.add(gallery);
-  lhLampMat = new THREE.MeshStandardMaterial({color: 0xffe9b0, emissive: 0xffc860, emissiveIntensity: 0.3});
-  const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.55, 8), lhLampMat);
-  lantern.position.y = 0.7 + 5.25 + 0.44;
-  g.add(lantern);
-  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.44, 0.4, 8), ironMat);
-  cap.position.y = 0.7 + 5.25 + 0.92;
-  g.add(cap);
-  lhGlow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTexture("rgba(255,220,140,.9)"), transparent: true, opacity: 0, depthWrite: false}));
-  lhGlow.position.y = 0.7 + 5.25 + 0.44;
-  lhGlow.scale.setScalar(2.2);
-  g.add(lhGlow);
-  // two opposed beams that the night turns
-  lhBeacon = new THREE.Group();
-  lhBeacon.position.y = 0.7 + 5.25 + 0.44;
-  lhBeamMat = new THREE.MeshBasicMaterial({color: 0xfff0c2, transparent: true, opacity: 0,
-    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide});
-  const beamGeo = new THREE.ConeGeometry(1.5, 16, 10, 1, true);
-  beamGeo.translate(0, -8, 0);
-  beamGeo.rotateX(Math.PI / 2); // the beam lies flat, reaching outward
-  for (const rot of [0, Math.PI]) {
-    const beam = new THREE.Mesh(beamGeo, lhBeamMat);
-    beam.rotation.y = rot;
-    lhBeacon.add(beam);
-  }
-  g.add(lhBeacon);
+  const g = new THREE.Group(); g.position.set(px, 0, pz);
+  ASSETS.lighthouse({group: g, x: 0, z: 0, hash: 0, biome: biomeFor(state.level)});
   worldGroup.add(g);
 }
 
@@ -412,6 +369,17 @@ export function initScene(canvas: HTMLCanvasElement): boolean {
     const l = new THREE.PointLight(0xffffff, 0, 6, 2);
     lightPool.push(l); scene.add(l);
   }
+  bindAssetFx({
+    flame: addFlame,
+    anchor: addAnchor,
+    sway,
+    dim: (m, base) => dimmables.push({m, base}),
+    shimmer: (m, base) => shimmers.push({m, base, phase: rnd() * 6.28}),
+    consumable: (mesh, char) => consumables.push({mesh, cellX: placingX, cellY: placingY, char}),
+    signalFire: (lit, cold) => { worldGroup.add(lit); worldGroup.add(cold); fireGroup = {lit, cold}; },
+    beacon: (b2, bm, lm, gl) => { lhBeacon = b2; lhBeamMat = bm; lhLampMat = lm; lhGlow = gl; },
+    glowTexture,
+  });
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloom = new UnrealBloomPass(new THREE.Vector2(480, 360), 0.65, 0.55, 0.72);
@@ -434,307 +402,15 @@ function addFlame(group: THREE.Group, x: number, y: number, z: number, color: st
   flameSprites.push({sprite: sp, base: scale, phase: rnd() * 6.28});
 }
 
-const woodMat = new THREE.MeshStandardMaterial({color: 0x3a2a18, roughness: 0.9});
-const ironMat = new THREE.MeshStandardMaterial({color: 0x17100a, roughness: 0.7, metalness: 0.4});
-const stoneMat = new THREE.MeshStandardMaterial({color: 0x4a4640, roughness: 0.95});
-const boulderMat = new THREE.MeshStandardMaterial({color: 0x333a30, roughness: 0.98});
-const wildFolMat = new THREE.MeshStandardMaterial({color: 0x16261a, roughness: 0.95});
+let placingX = 0; let placingY = 0; // the cell being furnished (for consumables)
 
-const ruinMat = new THREE.MeshStandardMaterial({color: 0x413e36, roughness: 0.97});
-
-/** A landmark left by older hands: broken walls, a leaning arch, a fallen shrine. */
-function buildRuin(g: THREE.Group, h: number): void {
-  const kind = h % 3;
-  if (kind === 0) { // the corner of a house no one remembers
-    const walls: [number, number, number, number, number][] = [
-      // [x, z, w, d, height]
-      [0.28, 0.18, 0.5, 0.09, 0.55 + (h % 4) * 0.08],
-      [0.16, 0.36, 0.09, 0.42, 0.4 + ((h >> 2) % 4) * 0.07],
-      [0.72, 0.7, 0.34, 0.09, 0.2 + ((h >> 4) % 3) * 0.06],
-    ];
-    for (const [wx, wz, ww, wd, wh] of walls) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(ww, wh, wd), ruinMat);
-      wall.position.set(wx, wh / 2, wz);
-      g.add(wall);
-      // a crumbled course on top
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(ww * 0.55, 0.07, wd * 0.9), ruinMat);
-      cap.position.set(wx + ww * 0.12, wh + 0.035, wz);
-      cap.rotation.y = ((h >> 3) % 5 - 2) * 0.06;
-      g.add(cap);
-    }
-  } else if (kind === 1) { // a doorway that outlived its door
-    const tall = 0.72 + (h % 3) * 0.06;
-    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.13, tall, 0.13), ruinMat);
-    p1.position.set(0.3, tall / 2, 0.5); g.add(p1);
-    const short = tall * 0.45;
-    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.13, short, 0.13), ruinMat);
-    p2.position.set(0.7, short / 2, 0.5); p2.rotation.z = 0.05; g.add(p2);
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.15), ruinMat);
-    lintel.position.set(0.38, tall + 0.02, 0.5); lintel.rotation.z = -0.35; g.add(lintel);
-  } else { // a shrine slab, knelt-at once, tilted now
-    const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.42), ruinMat);
-    plinth.position.set(0.5, 0.06, 0.5); g.add(plinth);
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.08), ruinMat);
-    slab.position.set(0.5, 0.34, 0.52);
-    slab.rotation.x = 0.18; slab.rotation.z = ((h >> 2) % 5 - 2) * 0.05;
-    g.add(slab);
-  }
-  PROPS3D.pebbles({group: g, x: 0, z: 0, hash: h >> 3, biome: BIOMES.moor});
-  PROPS3D.tuft({group: g, x: 0, z: 0, hash: h >> 5, biome: BIOMES.moor});
-}
-
-/** Impassable wilds: boulder clusters and dense thickets where a dungeon would have masonry. */
+/** Impassable wilds: pick which landmark or growth claims the cell. */
 function buildWilds(x: number, y: number, h: number): void {
   const g = new THREE.Group(); g.position.set(x, 0, y);
-  if (h % 7 === 3) { // now and then, older stonework
-    buildRuin(g, h >> 1);
-    worldGroup.add(g);
-    return;
-  }
-  if (h % 3 === 0) { // a stand of pines too dense to push through
-    for (let i = 0; i < 3; i++) {
-      const th = 0.4 + ((h >> (i * 2)) % 4) * 0.08;
-      const tx = 0.22 + ((h >> i) % 5) / 5 * 0.56, tz = 0.22 + ((h >> (i + 3)) % 5) / 5 * 0.56;
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.042, th, 5), woodMat);
-      trunk.position.set(tx, th / 2, tz); g.add(trunk);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.17 + ((h >> (i + 4)) % 4) * 0.022, 0.44 + th * 0.45, 7), wildFolMat);
-      cone.position.set(tx, th + 0.16, tz); g.add(cone);
-      sway(cone, 0.018);
-    }
-    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.15, 7, 5), wildFolMat);
-    bush.position.set(0.5, 0.09, 0.5); bush.scale.y = 0.6; g.add(bush);
-  } else { // a low cluster of mossy rocks with growth between
-    for (let i = 0; i < 4; i++) {
-      const r = 0.08 + ((h >> (i * 2)) % 5) * 0.026;
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), boulderMat);
-      rock.position.set(0.2 + ((h >> i) % 7) / 7 * 0.58, r * 0.55, 0.2 + ((h >> (i + 3)) % 7) / 7 * 0.58);
-      rock.rotation.set(i + h % 5, h % 7, 0); rock.scale.y = 0.72;
-      g.add(rock);
-    }
-    PROPS3D.tuft({group: g, x: 0, z: 0, hash: h >> 2, biome: BIOMES.moor});
-    PROPS3D.pebbles({group: g, x: 0, z: 0, hash: h >> 4, biome: BIOMES.moor});
-  }
+  const id = h % 7 === 3 ? "ruin" : h % 3 === 0 ? "pineStand" : "boulderCluster";
+  ASSETS[id]({group: g, x: 0, z: 0, hash: id === "ruin" ? h >> 1 : h, biome: biomeFor(state.level)});
   worldGroup.add(g);
 }
-
-const PROPS3D: Record<string, Prop3D> = {
-  torch(p) {
-    const [fx, fz] = p.faceDir!;
-    const bx = p.x + 0.5 + fx * 0.44, bz = p.z + 0.5 + fz * 0.44;
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.28, 6), woodMat);
-    shaft.position.set(bx + fx * -0.03, 0.62, bz + fz * -0.03);
-    shaft.rotation.z = fx * -0.4; shaft.rotation.x = fz * 0.4;
-    p.group.add(shaft);
-    const tip = new THREE.Vector3(bx - fx * 0.1, 0.78, bz - fz * 0.1);
-    addFlame(p.group, tip.x, tip.y, tip.z, "rgba(242,150,40,.9)", 0.34);
-    addAnchor(tip, 0xffab4a, 6, 5, 0.3);
-  },
-  embervein(p) {
-    const [fx, fz] = p.faceDir!;
-    const pos = new THREE.Vector3(p.x + 0.5 + fx * 0.46, 0.5, p.z + 0.5 + fz * 0.46);
-    addFlame(p.group, pos.x, pos.y, pos.z, "rgba(220,70,30,.55)", 0.5);
-    addAnchor(pos, 0xdd5522, 3.2, 4, 0.5);
-  },
-  lamppost(p) {
-    const px2 = p.x + 0.28, pz2 = p.z + 0.28;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.95, 6), ironMat);
-    pole.position.set(px2, 0.48, pz2); p.group.add(pole);
-    const lampMat = new THREE.MeshStandardMaterial({color: 0xffc86a, emissive: 0xffa838, emissiveIntensity: 2.4});
-    dimmables.push({m: lampMat, base: 2.4});
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 0.09), lampMat);
-    lamp.position.set(px2, 0.95, pz2); p.group.add(lamp);
-    addAnchor(new THREE.Vector3(px2, 0.95, pz2), 0xffc06a, 5, 5.5, 0.06);
-  },
-  crate(p) {
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), woodMat);
-    box.position.set(p.x + 0.76, 0.1, p.z + 0.26); box.rotation.y = (p.hash % 7) / 7;
-    p.group.add(box);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.24, 8),
-      new THREE.MeshStandardMaterial({color: 0x46362a, roughness: 0.85}));
-    barrel.position.set(p.x + 0.3, 0.12, p.z + 0.74); p.group.add(barrel);
-  },
-  puddle(p) {
-    const pm = new THREE.MeshStandardMaterial({color: 0x1a2836, roughness: 0.08, metalness: 0.85,
-      emissive: 0x0e2028, emissiveIntensity: 0.5});
-    shimmers.push({m: pm, base: 0.5, phase: rnd() * 6.28});
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.16 + ((p.hash >> 3) % 5) * 0.02, 16), pm);
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.set(p.x + 0.5 + ((p.hash % 13) - 6) * 0.02, 0.005, p.z + 0.5);
-    p.group.add(disc);
-  },
-  rubble(p) {
-    for (let i = 0; i < 4; i++) {
-      const s = 0.03 + ((p.hash >> (i * 3)) % 17) / 17 * 0.05;
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), stoneMat);
-      rock.position.set(p.x + 0.25 + ((p.hash >> i) % 11) / 11 * 0.5, s * 0.8, p.z + 0.25 + ((p.hash >> (i + 3)) % 11) / 11 * 0.5);
-      rock.rotation.set(i, p.hash % 7, 0);
-      p.group.add(rock);
-    }
-  },
-  crack(p) { /* engraved in the floor texture's spirit — skipped in 3D */ },
-  mushrooms(p) {
-    const capMat = new THREE.MeshStandardMaterial({color: 0x5a7a8a, emissive: 0x58c8f0, emissiveIntensity: 1.1});
-    dimmables.push({m: capMat, base: 1.1});
-    for (let i = 0; i < 3; i++) {
-      const mh = 0.06 + ((p.hash >> (i * 2)) % 4) * 0.015;
-      const mx = p.x + 0.35 + ((p.hash >> i) % 7) / 7 * 0.3, mz = p.z + 0.35 + ((p.hash >> (i + 2)) % 7) / 7 * 0.3;
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, mh, 5),
-        new THREE.MeshStandardMaterial({color: 0x3d4a52}));
-      stem.position.set(mx, mh / 2, mz); p.group.add(stem);
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.035, 7), capMat);
-      cap.position.set(mx, mh + 0.012, mz); p.group.add(cap);
-    }
-    addAnchor(new THREE.Vector3(p.x + 0.5, 0.12, p.z + 0.5), 0x66c8ee, 1.6, 2.5, 0.35);
-  },
-  embervent(p) {
-    const pos = new THREE.Vector3(p.x + 0.5, 0.02, p.z + 0.5);
-    addFlame(p.group, pos.x, 0.06, pos.z, "rgba(255,110,40,.6)", 0.42);
-    addAnchor(pos, 0xff6428, 3.5, 3.5, 0.6);
-  },
-  pebbles(p) { // a scatter of small stones
-    for (let i = 0; i < 4 + (p.hash % 3); i++) {
-      const r = 0.018 + ((p.hash >> (i * 2)) % 5) * 0.009;
-      const st = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), boulderMat);
-      st.position.set(p.x + 0.15 + ((p.hash >> i) % 11) / 11 * 0.7, r * 0.6,
-                      p.z + 0.15 + ((p.hash >> (i + 3)) % 11) / 11 * 0.7);
-      st.rotation.set(i, p.hash % 7, 0); st.scale.y = 0.7;
-      p.group.add(st);
-    }
-  },
-  tuft(p) { // a knot of grass that answers the wind
-    const hue = p.biome.id === "cove" ? 0x6a683c : p.biome.id === "harbor" ? 0x465430 : 0x44562e;
-    const mat = new THREE.MeshStandardMaterial({color: hue, roughness: 0.95});
-    const g2 = new THREE.Group();
-    const bx = 0.2 + ((p.hash >> 2) % 9) / 9 * 0.6, bz = 0.2 + ((p.hash >> 5) % 9) / 9 * 0.6;
-    for (let i = 0; i < 5; i++) {
-      const bh = 0.05 + ((p.hash >> i) % 4) * 0.02;
-      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.008, bh, 3), mat);
-      blade.position.set(((p.hash >> (i * 2)) % 7) / 7 * 0.1 - 0.05, bh / 2, ((p.hash >> (i + 4)) % 7) / 7 * 0.1 - 0.05);
-      blade.rotation.z = (((p.hash >> i) % 5) - 2) * 0.09;
-      g2.add(blade);
-    }
-    g2.position.set(p.x + bx, 0, p.z + bz);
-    p.group.add(g2);
-    sway(g2, 0.08, p.x + bx, p.z + bz);
-  },
-  heather(p) { // moor heather: low green with purple sparks
-    const g2 = new THREE.Group();
-    const leaf = new THREE.MeshStandardMaterial({color: 0x3c4c2c, roughness: 0.95});
-    const bloom2 = new THREE.MeshStandardMaterial({color: 0x8a6a9a, roughness: 0.9, emissive: 0x4a3458, emissiveIntensity: 0.25});
-    const bx = 0.2 + ((p.hash >> 3) % 9) / 9 * 0.6, bz = 0.2 + ((p.hash >> 6) % 9) / 9 * 0.6;
-    for (let i = 0; i < 3; i++) {
-      const px2 = ((p.hash >> (i * 2)) % 7) / 7 * 0.16 - 0.08, pz2 = ((p.hash >> (i + 3)) % 7) / 7 * 0.16 - 0.08;
-      const tuftM = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 4), leaf);
-      tuftM.position.set(px2, 0.03, pz2); tuftM.scale.y = 0.65; g2.add(tuftM);
-      const bl = new THREE.Mesh(new THREE.SphereGeometry(0.018, 5, 4), bloom2);
-      bl.position.set(px2, 0.075, pz2); g2.add(bl);
-    }
-    g2.position.set(p.x + bx, 0, p.z + bz);
-    p.group.add(g2);
-    sway(g2, 0.035, p.x + bx, p.z + bz);
-  },
-  cart(p) { // a handcart left by the road
-    const cx2 = p.x + 0.66, cz2 = p.z + 0.34;
-    const bed = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.4), woodMat);
-    bed.position.set(cx2, 0.16, cz2); bed.rotation.y = (p.hash % 7) / 7 - 0.5; bed.rotation.z = 0.12;
-    p.group.add(bed);
-    for (const dx of [-0.15, 0.15]) {
-      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.025, 10), woodMat);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(cx2 + dx, 0.08, cz2 - 0.03);
-      p.group.add(wheel);
-    }
-  },
-  sacks(p) { // grain sacks slumped against a wall
-    const mat = new THREE.MeshStandardMaterial({color: 0x8a7a58, roughness: 0.95});
-    for (let i = 0; i < 2 + (p.hash % 2); i++) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(0.075 + ((p.hash >> i) % 4) * 0.012, 7, 6), mat);
-      s.position.set(p.x + 0.25 + ((p.hash >> (i * 2)) % 5) / 5 * 0.24, 0.07,
-                     p.z + 0.66 + ((p.hash >> (i + 3)) % 4) / 4 * 0.16);
-      s.scale.y = 0.62;
-      p.group.add(s);
-    }
-  },
-  banner(p) { // dyed cloth hung on a facade
-    const [fx, fz] = p.faceDir!;
-    const cols = [0x8a3a28, 0x2e4a68, 0x4e5a2e, 0x6a4a78];
-    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.5),
-      new THREE.MeshStandardMaterial({color: cols[p.hash % cols.length], roughness: 0.9, side: THREE.DoubleSide}));
-    cloth.position.set(p.x + 0.5 + fx * 0.515, 0.6, p.z + 0.5 + fz * 0.515);
-    cloth.lookAt(p.x + 0.5 + fx * 2, 0.6, p.z + 0.5 + fz * 2);
-    p.group.add(cloth);
-    sway(cloth, 0.05, p.x, p.z);
-    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 5), woodMat);
-    rod.position.set(p.x + 0.5 + fx * 0.53, 0.88, p.z + 0.5 + fz * 0.53);
-    if (fx !== 0) rod.rotation.x = Math.PI / 2; else rod.rotation.z = Math.PI / 2;
-    p.group.add(rod);
-  },
-  reeds(p) { // marsh grass in a wind-bent clump
-    const mat = new THREE.MeshStandardMaterial({color: 0x46562c, roughness: 0.95});
-    const g2 = new THREE.Group();
-    for (let i = 0; i < 6; i++) {
-      const bh = 0.11 + ((p.hash >> i) % 5) * 0.03;
-      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.01, bh, 4), mat);
-      blade.position.set(((p.hash >> (i * 2)) % 9) / 9 * 0.24 - 0.12, bh / 2, ((p.hash >> (i + 4)) % 7) / 7 * 0.2 - 0.1);
-      blade.rotation.z = (((p.hash >> i) % 7) - 3) * 0.05;
-      g2.add(blade);
-    }
-    g2.position.set(p.x + 0.26, 0, p.z + 0.72);
-    p.group.add(g2);
-    sway(g2, 0.1, p.x, p.z);
-  },
-  menhir(p) { // a leaning stone somebody raised long ago
-    const menhirMat = new THREE.MeshStandardMaterial({color: 0x262b22, roughness: 1});
-    const stone = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.4 + (p.hash % 4) * 0.05, 0.07), menhirMat);
-    stone.position.set(p.x + 0.78, 0.2, p.z + 0.78);
-    stone.rotation.set((((p.hash >> 3) % 5) - 2) * 0.04, (p.hash % 7) / 7 * 3, ((p.hash % 5) - 2) * 0.06);
-    p.group.add(stone);
-  },
-  log(p) { // a fallen trunk going soft with moss
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.045, 0.4, 6), woodMat);
-    trunk.rotation.z = Math.PI / 2; trunk.rotation.y = (p.hash % 9) / 9 * 3;
-    trunk.position.set(p.x + 0.5 + ((p.hash % 5) - 2) * 0.05, 0.04, p.z + 0.78);
-    p.group.add(trunk);
-  },
-  stalagmite(p) {
-    for (let i = 0; i < 2 + (p.hash % 2); i++) {
-      const sh = 0.08 + ((p.hash >> (i * 2)) % 6) * 0.035;
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.035 + ((p.hash >> i) % 3) * 0.014, sh, 6), stoneMat);
-      spike.position.set(p.x + 0.2 + ((p.hash >> (i * 3)) % 8) / 8 * 0.28, sh / 2,
-                         p.z + 0.6 + ((p.hash >> (i + 5)) % 6) / 6 * 0.24);
-      p.group.add(spike);
-    }
-  },
-  bones(p) { // someone came this far
-    const mat = new THREE.MeshStandardMaterial({color: 0xb8ad98, roughness: 0.9});
-    for (let i = 0; i < 3; i++) {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.14, 4), mat);
-      b.rotation.set(Math.PI / 2, 0, (p.hash >> i) % 7);
-      b.position.set(p.x + 0.62 + ((p.hash >> (i * 2)) % 6) / 6 * 0.2, 0.015,
-                     p.z + 0.28 + ((p.hash >> (i + 2)) % 6) / 6 * 0.2);
-      p.group.add(b);
-    }
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.045, 7, 6), mat);
-    skull.position.set(p.x + 0.7, 0.04, p.z + 0.35);
-    p.group.add(skull);
-  },
-  tree(p) {
-    // a windswept moor pine, leaning off the path
-    const th = 0.5 + ((p.hash >> 2) % 5) * 0.09;
-    const tx = p.x + 0.22 + ((p.hash % 7) / 7) * 0.2, tz = p.z + 0.22 + (((p.hash >> 3) % 7) / 7) * 0.2;
-    const lean = (((p.hash >> 5) % 9) - 4) * 0.03;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.055, th, 6), woodMat);
-    trunk.position.set(tx, th / 2, tz); trunk.rotation.z = lean;
-    p.group.add(trunk);
-    const folMat = new THREE.MeshStandardMaterial({color: 0x16261a, roughness: 0.95});
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.24 + ((p.hash >> 4) % 4) * 0.03, 0.5 + th * 0.5, 7), folMat);
-    cone.position.set(tx + lean * th, th + 0.2, tz);
-    p.group.add(cone);
-    const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.3 + ((p.hash >> 6) % 4) * 0.03, 0.34, 7), folMat);
-    skirt.position.set(tx + lean * th * 0.6, th * 0.72, tz);
-    p.group.add(skirt);
-  },
-};
 
 /* ---------- level construction ---------- */
 function faceToOpen(map: string[], x: number, y: number): [number, number] | null {
@@ -785,13 +461,6 @@ export function buildLevel(): void {
     map: tex(a), normalMap: new THREE.CanvasTexture(normals[i]), roughness: 0.92,
   }));
   const wallGeo = new THREE.BoxGeometry(1, 1, 1);
-  // pitched roofs: a flattened triangular prism, ridge along X (caps close the gables)
-  const roofGeo = new THREE.CylinderGeometry(0.66, 0.66, 1.08, 3, 1, false, Math.PI / 2);
-  roofGeo.rotateZ(Math.PI / 2);
-  roofGeo.scale(1, 0.55, 1);
-  const roofMats = [0x5a3c30, 0x3c4450, 0x54452c].map(rc =>
-    new THREE.MeshStandardMaterial({color: rc, roughness: 0.92}));
-  const chimGeo = new THREE.BoxGeometry(0.13, 0.34, 0.13);
 
   // floor & ceiling
   const ftex = tex(biomeFloorTexture(biome), true);
@@ -899,15 +568,15 @@ export function buildLevel(): void {
       : [];
     const roofed = isHarbor && !perimeter;
     if (roofed) {
-      const roof = new THREE.Mesh(roofGeo, roofMats[h % roofMats.length]);
-      roof.position.set(x + 0.5, hgt + 0.18, y + 0.5);
       const ridgeAlongZ = faces.length ? faces[0][0] !== 0 : h % 2 === 1; // door ridges parallel the facade
-      if (ridgeAlongZ) roof.rotation.y = Math.PI / 2;
-      worldGroup.add(roof);
+      const rg = new THREE.Group(); rg.position.set(x + 0.5, hgt + 0.18, y + 0.5);
+      ASSETS.roof({group: rg, x, z: y, hash: h, biome, ridgeAlongZ});
+      worldGroup.add(rg);
       if (h % 3 === 0) {
-        const chim = new THREE.Mesh(chimGeo, stoneMat);
-        chim.position.set(x + 0.5 + (ridgeAlongZ ? 0 : 0.2), hgt + 0.3, y + 0.5 + (ridgeAlongZ ? 0.2 : 0));
-        worldGroup.add(chim);
+        const cg = new THREE.Group();
+        cg.position.set(x + 0.5 + (ridgeAlongZ ? 0 : 0.2), hgt + 0.3, y + 0.5 + (ridgeAlongZ ? 0.2 : 0));
+        ASSETS.chimney({group: cg, x, z: y, hash: h, biome});
+        worldGroup.add(cg);
       }
     }
     if (isDoor) {
@@ -936,7 +605,7 @@ export function buildLevel(): void {
       if (face) {
         for (const place of biome.wallProps) {
           if (h % place.mod !== place.rem) continue;
-          PROPS3D[place.id]?.({group: worldGroup, x, z: y, hash: h, biome, faceDir: face});
+          ASSETS[place.id]?.({group: worldGroup, x, z: y, hash: h, biome, faceDir: face});
           break;
         }
       }
@@ -951,7 +620,7 @@ export function buildLevel(): void {
     if (ch === ".") {
       for (const place of biome.floorProps) {
         if (h % place.mod !== place.rem) continue;
-        PROPS3D[place.id]?.({group: worldGroup, x, z: y, hash: h, biome});
+        ASSETS[place.id]?.({group: worldGroup, x, z: y, hash: h, biome});
         break;
       }
       continue;
@@ -995,80 +664,7 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
   const g = new THREE.Group();
   g.position.set(x, 0, y);
   const cx = 0.5, cz = 0.5;
-  if (ch === "C") {
-    const chest = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.24, 0.3),
-      new THREE.MeshStandardMaterial({color: 0x7a5a2c, roughness: 0.8}));
-    body.position.set(cx, 0.12, cz);
-    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.42, 8, 1, false, 0, Math.PI),
-      new THREE.MeshStandardMaterial({color: 0x9a7a3c, roughness: 0.8}));
-    lid.rotation.z = Math.PI / 2; lid.position.set(cx, 0.24, cz);
-    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.02),
-      new THREE.MeshStandardMaterial({color: 0xe0b24c, emissive: 0xa07820, emissiveIntensity: 0.5, metalness: 0.8, roughness: 0.3}));
-    lock.position.set(cx, 0.14, cz + 0.16);
-    chest.add(body, lid, lock);
-    g.add(chest);
-    consumables.push({mesh: chest, cellX: x, cellY: y, char: "C"});
-  } else if (ch === "S" || ch === "U") {
-    for (let i = 0; i < 4; i++) {
-      const stepM = new THREE.Mesh(new THREE.BoxGeometry(0.8 - i * 0.12, 0.08, 0.24), stoneMat);
-      stepM.position.set(cx, ch === "S" ? 0.04 + i * 0.02 : 0.08 + i * 0.14, cz - 0.3 + i * 0.2);
-      g.add(stepM);
-    }
-    if (ch === "U") addAnchor(new THREE.Vector3(x + cx, 0.8, y + cz), 0xffc478, 2, 3, 0.1);
-  } else if (ch === "F") {
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.22, 12), stoneMat);
-    basin.position.set(cx, 0.11, cz);
-    const water = new THREE.Mesh(new THREE.CircleGeometry(0.26, 12),
-      new THREE.MeshStandardMaterial({color: 0x7fa8bd, emissive: 0x3888b8, emissiveIntensity: 0.9, roughness: 0.1, metalness: 0.6}));
-    water.rotation.x = -Math.PI / 2; water.position.set(cx, 0.225, cz);
-    g.add(basin, water);
-    addAnchor(new THREE.Vector3(x + cx, 0.5, y + cz), 0x60b8e0, 3, 4, 0.15);
-  } else if (ch === "B") {
-    const bossM = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.9, 7),
-      new THREE.MeshStandardMaterial({color: 0x140a06, roughness: 0.9}));
-    bossM.position.set(cx, 0.45, cz);
-    const eyeMat = new THREE.MeshStandardMaterial({color: 0xffb44c, emissive: 0xff9020, emissiveIntensity: 3});
-    for (const dx of [-0.08, 0.08]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), eyeMat);
-      eye.position.set(cx + dx, 0.68, cz + 0.24);
-      g.add(eye);
-    }
-    g.add(bossM);
-    addAnchor(new THREE.Vector3(x + cx, 0.6, y + cz), 0xdd4422, 5, 5, 0.5);
-    consumables.push({mesh: g, cellX: x, cellY: y, char: "B"});
-  } else if (ch === "E") {
-    addFlame(worldGroup, x + cx, 0.7, y + cz, "rgba(210,220,235,.5)", 0.6);
-    addAnchor(new THREE.Vector3(x + cx, 0.7, y + cz), 0xc8d4e8, 3, 4, 0.05);
-  } else if (ch === "G") {
-    const lit = new THREE.Group(), cold = new THREE.Group();
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.045, 6, 12), stoneMat);
-    ring.rotation.x = -Math.PI / 2; ring.position.set(cx, 0.04, cz);
-    g.add(ring);
-    for (let i = 0; i < 3; i++) {
-      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.34, 5), woodMat);
-      log.position.set(cx, 0.14, cz); log.rotation.z = 0.9; log.rotation.y = i * 2.1;
-      g.add(log);
-    }
-    addFlame(lit, x + cx, 0.35, y + cz, "rgba(250,170,60,.95)", 0.55);
-    addAnchor(new THREE.Vector3(x + cx, 0.4, y + cz), 0xffa040, 7, 6, 0.35);
-    worldGroup.add(lit); worldGroup.add(cold);
-    fireGroup = {lit, cold};
-  } else if (ch === "R") {
-    for (const dx of [-0.35, 0.35]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.8, 5), woodMat);
-      post.position.set(cx + dx, 0.4, cz); g.add(post);
-    }
-    const counter = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 0.34), woodMat);
-    counter.position.set(cx, 0.15, cz); g.add(counter);
-    const canopyCv = document.createElement("canvas"); canopyCv.width = 64; canopyCv.height = 16;
-    const cc = canopyCv.getContext("2d")!;
-    for (let i = 0; i < 8; i++) { cc.fillStyle = i % 2 ? "#8a3a28" : "#b8a888"; cc.fillRect(i * 8, 0, 8, 16); }
-    const canopy = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.34),
-      new THREE.MeshStandardMaterial({map: new THREE.CanvasTexture(canopyCv), side: THREE.DoubleSide, roughness: 0.9}));
-    canopy.rotation.x = -0.5; canopy.position.set(cx, 0.86, cz + 0.05);
-    g.add(canopy);
-  } else if (ch === "~") { // the sea at the isle's edge
+  if (ch === "~") { // the sea at the isle's edge (terrain, not an asset)
     const tile = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), getWaterMats()[0]);
     tile.rotation.x = -Math.PI / 2; tile.position.set(cx, 0.02, cz);
     g.add(tile);
@@ -1081,16 +677,12 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
       foam.position.set(cx + dx * 0.455, 0.028, cz + dy * 0.455);
       g.add(foam);
     }
-  }
-  if (ch === "X") { // the folded door out of a vault: an arch of pale light
-    for (const dx of [-0.26, 0.26]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.92, 0.1), stoneMat);
-      post.position.set(cx + dx, 0.46, cz); g.add(post);
+  } else {
+    const id = FEATURE_ASSET[ch];
+    if (id) {
+      placingX = x; placingY = y;
+      ASSETS[id]({group: g, x, z: y, hash: cellHash(x, y), biome, up: ch === "U"});
     }
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.1, 0.12), stoneMat);
-    lintel.position.set(cx, 0.94, cz); g.add(lintel);
-    addFlame(g, cx, 0.5, cz, "rgba(200,176,224,.55)", 0.55);
-    addAnchor(new THREE.Vector3(x + cx, 0.55, y + cz), 0xc8b0e0, 4, 4.5, 0.15);
   }
   if (biome.sky && SIGN_NAMES[ch]) { // plaza sights get their name in the air too
     const sp = labelSprite(SIGN_NAMES[ch]);

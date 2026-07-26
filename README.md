@@ -38,7 +38,8 @@ Source is strict-mode TypeScript in `src/`:
 | `src/cards.ts` | Card generation, rarity rolls, naming, save migration |
 | `src/state.ts` | Runtime state, versioned saves, map queries |
 | `src/biomes.ts` | Biome structs: textures, ambient light, prop placement per level |
-| `src/scene3d.ts` | WebGL world (three.js): geometry, lights, bloom, gliding camera |
+| `src/scene3d.ts` | WebGL engine (three.js): placement, sky, weather, lights, bloom, camera |
+| `src/assets3d.ts` | Canonical 3D asset library: every world object as a named, swappable factory over a shared material palette — replace any entry (or return a GLTF group) without touching the engine |
 | `src/render.ts` | 2D subsystems: automap, title scene, monster art |
 | `src/audio.ts` | Procedural WebAudio sfx and ambient scene music |
 | `src/net.ts` | PeerJS link (host/join, message framing) |
