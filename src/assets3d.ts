@@ -91,6 +91,30 @@ export const ASSETS: Record<string, AssetFactory> = {
     p.group.add(rod);
   },
 
+  barrow(p) { // a burial mound with a doorway older than the town
+    const h = p.hash;
+    const cx = p.x + 0.7, cz = p.z + 0.7; // mounded into its corner of the cell
+    const mound = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 7), PALETTE.wildFoliage);
+    mound.position.set(cx, -0.19, cz); mound.scale.y = 0.95;
+    p.group.add(mound);
+    const a = (h % 4) * Math.PI / 2; // the door faces a cardinal, picked by the stone's memory
+    const dx = Math.cos(a), dz = Math.sin(a);
+    for (const side of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.05), PALETTE.menhir);
+      post.position.set(cx + dx * 0.28 - dz * side * 0.075, 0.1, cz + dz * 0.28 + dx * side * 0.075);
+      p.group.add(post);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.05, 0.08), PALETTE.menhir);
+    lintel.position.set(cx + dx * 0.28, 0.22, cz + dz * 0.28);
+    lintel.rotation.y = Math.PI / 2 - a;
+    p.group.add(lintel);
+    const dark = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.16),
+      new THREE.MeshBasicMaterial({color: 0x050604}));
+    dark.position.set(cx + dx * 0.285, 0.09, cz + dz * 0.285);
+    dark.lookAt(cx + dx * 2, 0.09, cz + dz * 2);
+    p.group.add(dark);
+  },
+
   bones(p) { // someone came this far
     for (let i = 0; i < 3; i++) {
       const b = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.14, 4), PALETTE.bone);
@@ -131,6 +155,20 @@ export const ASSETS: Record<string, AssetFactory> = {
     }
     ASSETS.tuft({...p, hash: h >> 2});
     ASSETS.pebbles({...p, hash: h >> 4});
+  },
+
+  cairn(p) { // stacked stones: someone marked the way
+    const h = p.hash;
+    const cx = p.x + 0.25 + ((h >> 2) % 7) / 7 * 0.5, cz = p.z + 0.25 + ((h >> 5) % 7) / 7 * 0.5;
+    let y = 0;
+    for (let i = 0; i < 4 + (h % 2); i++) {
+      const r = 0.085 - i * 0.016, th = 0.05 - i * 0.006;
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.12, th, 7), PALETTE.stone);
+      s.position.set(cx + (((h >> i) % 5) - 2) * 0.008, y + th / 2, cz + (((h >> (i + 3)) % 5) - 2) * 0.008);
+      s.rotation.y = (h >> i) % 7;
+      p.group.add(s);
+      y += th;
+    }
   },
 
   cart(p) { // a handcart left by the road
@@ -202,10 +240,10 @@ export const ASSETS: Record<string, AssetFactory> = {
     const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.22, 12), PALETTE.stone);
     basin.position.set(cx, 0.11, cz);
     const water = new THREE.Mesh(new THREE.CircleGeometry(0.26, 12),
-      new THREE.MeshStandardMaterial({color: 0x7fa8bd, emissive: 0x3888b8, emissiveIntensity: 0.9, roughness: 0.1, metalness: 0.6}));
+      new THREE.MeshStandardMaterial({color: 0x7fa8bd, emissive: 0x3888b8, emissiveIntensity: 0.4, roughness: 0.35, metalness: 0.2}));
     water.rotation.x = -Math.PI / 2; water.position.set(cx, 0.225, cz);
     p.group.add(basin, water);
-    fx.anchor(new THREE.Vector3(p.x + 0.5, 0.5, p.z + 0.5), 0x60b8e0, 3, 4, 0.15);
+    fx.anchor(new THREE.Vector3(p.x + 0.5, 0.95, p.z + 0.5), 0x60b8e0, 1.1, 3.2, 0.12);
   },
 
   heather(p) { // moor heather: low green with purple sparks
@@ -467,6 +505,22 @@ export const ASSETS: Record<string, AssetFactory> = {
     }
   },
 
+  stoneCircle(p) { // a ring of standing stones, patient as the hills
+    const h = p.hash;
+    const n = 6 + (h % 2);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + (h % 7) / 7;
+      const sh = 0.2 + ((h >> (i % 5)) % 4) * 0.05;
+      const s = new THREE.Mesh(new THREE.BoxGeometry(0.07, sh, 0.055), PALETTE.menhir);
+      s.position.set(p.x + 0.5 + Math.cos(a) * 0.36, sh / 2 - 0.01, p.z + 0.5 + Math.sin(a) * 0.36);
+      s.rotation.set((((h >> i) % 5) - 2) * 0.05, a + Math.PI / 2, (((h >> (i + 2)) % 5) - 2) * 0.07);
+      p.group.add(s);
+    }
+    const altar = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.05, 8), PALETTE.menhir);
+    altar.position.set(p.x + 0.5, 0.025, p.z + 0.5);
+    p.group.add(altar);
+  },
+
   torch(p) { // wall-bracket fire
     const [dx, dz] = p.faceDir!;
     const bx = p.x + 0.5 + dx * 0.44, bz = p.z + 0.5 + dz * 0.44;
@@ -538,6 +592,54 @@ export const ASSETS: Record<string, AssetFactory> = {
     fx.flame(p.group, cx, 0.5, cz, "rgba(200,176,224,.55)", 0.55);
     fx.anchor(new THREE.Vector3(p.x + cx, 0.55, p.z + cz), 0xc8b0e0, 4, 4.5, 0.15);
   },
+  watchtower(p) { // a hollow tower still watching the water
+    const h = p.hash;
+    const cx = p.x + 0.74, cz = p.z + 0.74; // it keeps to its corner of the cell
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.24, 1.8, 9, 1, true), PALETTE.ruin);
+    body.position.set(cx, 0.9, cz);
+    p.group.add(body);
+    const n = 6; // the crown, part-fallen
+    for (let i = 0; i < n; i++) {
+      if ((h >> i) % 3 === 0) continue;
+      const a = (i / n) * Math.PI * 2;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11 + ((h >> i) % 3) * 0.03, 0.06), PALETTE.ruin);
+      m.position.set(cx + Math.cos(a) * 0.17, 1.84, cz + Math.sin(a) * 0.17);
+      m.rotation.y = -a;
+      p.group.add(m);
+    }
+    const da = (h % 4) * Math.PI / 2;
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.26), new THREE.MeshBasicMaterial({color: 0x050604}));
+    door.position.set(cx + Math.cos(da) * 0.215, 0.14, cz + Math.sin(da) * 0.215);
+    door.lookAt(cx + Math.cos(da) * 2, 0.14, cz + Math.sin(da) * 2);
+    p.group.add(door);
+    for (let i = 0; i < 4; i++) { // fallen crown-stones in the grass
+      const r = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.07), PALETTE.ruin);
+      r.position.set(p.x + 0.15 + ((h >> (i * 2)) % 7) / 7 * 0.5, 0.03, p.z + 0.15 + ((h >> (i * 2 + 3)) % 7) / 7 * 0.5);
+      r.rotation.y = (h >> i) % 7;
+      p.group.add(r);
+    }
+  },
+
+  wreck(p) { // a hull the sea gave back, keel to the sky
+    const h = p.hash;
+    const g2 = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.62, 8, 1), PALETTE.wood);
+    hull.rotation.z = Math.PI / 2; hull.scale.y = 0.6; hull.position.y = 0.1;
+    g2.add(hull);
+    const keel = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.035, 0.045), PALETTE.iron);
+    keel.position.y = 0.2;
+    g2.add(keel);
+    for (const e of [-1, 1]) { // ribs the tide stripped bare
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.2, 0.03), PALETTE.wood);
+      rib.position.set(e * (0.33 + ((h >> 3) % 3) * 0.02), 0.1, e * 0.03);
+      rib.rotation.z = e * 0.5;
+      g2.add(rib);
+    }
+    g2.position.set(p.x + 0.5, 0, p.z + 0.5);
+    g2.rotation.y = (h % 7) + 0.4;
+    p.group.add(g2);
+  },
+
 };
 
 /** Which asset stages each map feature character. */

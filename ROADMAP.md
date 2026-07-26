@@ -119,6 +119,17 @@
   vignette that deepens at night, and a whisper of animated film grain.
   Torchlit depths get their own warm, close-cornered grade.
 
+- **The living wilds** — the outdoors filled in. Five new canonical assets:
+  cairns that mark the ways, barrows with lintel doorways, rings of standing
+  stones, hollow watchtowers with part-fallen crowns, and beached hulls the
+  sea gave back. The moor now seats two towers, two stone circles, three
+  barrows, and six ruins among far denser heather, logs, reeds, and boulder
+  clusters; the cove keeps its open sand but gains wrecks, a tower, old
+  bones, and waymark cairns. The moor spring's night glow was rebuilt — its
+  light anchor sat close enough to the water to blow out bloom into a red
+  blob at point-blank range; lifted and dimmed, it reads as a soft blue
+  basin now.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
