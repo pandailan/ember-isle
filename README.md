@@ -32,7 +32,6 @@ Source is strict-mode TypeScript in `src/`:
 | `src/cards.ts` | Card generation, rarity rolls, naming, save migration |
 | `src/state.ts` | Runtime state, versioned saves, map queries |
 | `src/biomes.ts` | Biome structs: textures, ambient light, prop placement per level |
-| `src/props.ts` | Prop registry: draw + light + glow definitions (torches, vents…) |
 | `src/scene3d.ts` | WebGL world (three.js): geometry, lights, bloom, gliding camera |
 | `src/render.ts` | 2D subsystems: automap, title scene, monster art |
 | `src/audio.ts` | Procedural WebAudio sfx and ambient scene music |
