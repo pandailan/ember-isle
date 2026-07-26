@@ -30,6 +30,16 @@
   theirs, and their lent cards' XP and gold share keep merging into their own
   save (which is never overwritten — unless they had no save, in which case
   they inherit the world outright).
+- **True 3D + audio v2** — three.js WebGL renderer (gliding camera, real point
+  lights over normal-mapped procedural stone, fog, bloom) and WebAudio v2
+  (convolution reverb, generative per-biome music, layered SFX).
+- **Streaming build** — code-split chunks loaded on demand (three.js and PeerJS
+  lazy), service-worker offline caching on Pages; the single-file artifact
+  build is preserved as `dist/single.html`.
+- **Town & the Moor** — pitched roofs, chimneys, and varied building heights in
+  the harbor; floating signposts over every sight (fading out up close); a west
+  gate into the first wilderness, The Moor of Vhalis — an open night moor with
+  low outcrops, pines, fireflies, and Moor Wolf packs.
 
 ## Next
 
