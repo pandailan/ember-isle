@@ -16,6 +16,12 @@ See `ROADMAP.md` for what's next.
 The game deploys to GitHub Pages on every push to `main`:
 **https://pandailan.github.io/ember-isle/**
 
+Assets stream on demand: a small core loads instantly, the WebGL world engine
+streams in behind the title screen, and the co-op networking chunk only loads
+when a signal fire is lit. A service worker makes repeat visits instant and
+lets the game run fully offline. For a copy that works from a plain file with
+no server at all, grab `single.html` from the deployed site.
+
 Designed for touch (iPad): on-screen buttons or swipe the viewport to move;
 arrow keys / WASD also work. Progress saves to `localStorage` on the device.
 No server or network is needed once the page has loaded.
@@ -49,8 +55,9 @@ Source is strict-mode TypeScript in `src/`:
 ```sh
 npm install
 npm run check   # type-check
-npm run build   # emit dist/index.html (single self-contained file)
+npm run build   # emit dist/: streaming build (index.html + chunks + sw.js)
+                # and dist/single.html (one self-contained file)
 ```
 
 `.github/workflows/deploy.yml` type-checks, builds, and publishes `dist/` to
-GitHub Pages. To play locally, open `dist/index.html` in any browser.
+GitHub Pages. To play locally, open `dist/single.html` in any browser.

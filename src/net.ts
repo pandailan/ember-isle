@@ -1,5 +1,15 @@
-import Peer from "peerjs";
-import type { DataConnection } from "peerjs";
+import type { Peer, DataConnection } from "peerjs";
+
+/* PeerJS streams in only when someone actually reaches for co-op. */
+type PeerClass = typeof import("peerjs").Peer;
+let PeerCtor: PeerClass | null = null;
+async function loadPeer(): Promise<PeerClass> {
+  if (!PeerCtor) {
+    const m = await import("peerjs");
+    PeerCtor = (m.Peer ?? (m as unknown as {default: PeerClass}).default) as PeerClass;
+  }
+  return PeerCtor;
+}
 
 export type NetRole = "solo" | "host" | "guest";
 export interface NetMsg { t: string; [k: string]: unknown; }
@@ -41,8 +51,8 @@ class Net {
     const code = makeCode();
     let settled = false;
     const done = (msg: string, ok: boolean) => { if (!settled) { settled = true; cb(msg, ok); } };
-    try {
-      const peer = new Peer(ID_PREFIX + code, peerOpts());
+    loadPeer().then(P => {
+      const peer = new P(ID_PREFIX + code, peerOpts());
       this.peer = peer;
       peer.on("open", () => { this.role = "host"; this.code = code; done(code, true); });
       peer.on("error", e => { this.reset(); done(String((e as Error).message || e), false); });
@@ -50,14 +60,14 @@ class Net {
         if (this.conn) { c.close(); return; } // one companion only
         c.on("open", () => this.wire(c));
       });
-    } catch (e) { this.reset(); done(String(e), false); }
+    }).catch(e => { this.reset(); done(String(e), false); });
   }
 
   join(code: string, cb: (err?: string) => void): void {
     let settled = false;
     const done = (err?: string) => { if (!settled) { settled = true; cb(err); } };
-    try {
-      const peer = new Peer(peerOpts() as object);
+    loadPeer().then(P => {
+      const peer = new P(peerOpts() as unknown as string);
       this.peer = peer;
       peer.on("error", e => { this.reset(); done(String((e as Error).message || e)); });
       peer.on("open", () => {
@@ -66,7 +76,7 @@ class Net {
         c.on("error", e => { this.reset(); done(String(e)); });
       });
       setTimeout(() => done("No answer — check the code and try again."), 12000);
-    } catch (e) { this.reset(); done(String(e)); }
+    }).catch(e => { this.reset(); done(String(e)); });
   }
 
   private hbTimer: ReturnType<typeof setInterval> | null = null;

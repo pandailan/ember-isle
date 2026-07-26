@@ -5,7 +5,7 @@
 import { MAPS, LEVEL_NAMES, DIRN, ENEMIES } from "./data";
 import { state, cellAt, mobAt } from "./state";
 import { $, reduceMotion } from "./util";
-import { initScene, frame as frame3d, setSpriteSource } from "./scene3d";
+
 
 export const view = document.getElementById("view") as HTMLCanvasElement;
 export const amap = document.getElementById("automap") as HTMLCanvasElement;
@@ -19,15 +19,27 @@ actx.scale(DPR, DPR);
 const DIRV_A = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 let webgl = false;
+let s3d: typeof import("./scene3d") | null = null;
+
+/** The world engine streams in behind the title screen; the page is
+    interactive immediately. */
 export function bootRenderer(): void {
-  setSpriteSource(getSprite);
-  webgl = initScene(view);
-  if (!webgl) {
-    const c = view.getContext("2d");
-    if (c) { c.fillStyle = "#120c06"; c.fillRect(0, 0, view.width, view.height);
-      c.fillStyle = "#e8d9b0"; c.font = "16px serif";
-      c.fillText("This device does not support WebGL.", 90, 180); }
-  }
+  void import("./scene3d").then(m => {
+    s3d = m;
+    m.setSpriteSource(getSprite);
+    webgl = m.initScene(view);
+    document.getElementById("gl-loading")?.classList.add("done");
+    if (!webgl) glFallback("This device does not support WebGL.");
+  }).catch(() => {
+    document.getElementById("gl-loading")?.classList.add("done");
+    glFallback("The world failed to load — check the connection and reload.");
+  });
+}
+
+function glFallback(msg: string): void {
+  const c = view.getContext("2d");
+  if (c) { c.fillStyle = "#120c06"; c.fillRect(0, 0, view.width, view.height);
+    c.fillStyle = "#e8d9b0"; c.font = "16px serif"; c.fillText(msg, 60, 180); }
 }
 
 /** Called by game code after any move or change: refreshes labels + automap.
@@ -251,8 +263,8 @@ export function startRenderLoop(): void {
     const dt = Math.min(0.1, (ts - last) / 1000); last = ts;
     animT += dt; acc += dt;
     const scr = document.querySelector(".screen.on")?.id;
-    if (scr === "scr-dungeon" && state && webgl) {
-      frame3d(dt);                     // the world glides at full rate
+    if (scr === "scr-dungeon" && state && webgl && s3d) {
+      s3d.frame(dt);                     // the world glides at full rate
       if (acc >= 0.25 && amap.classList.contains("on")) { renderAutomap(); }
       if (acc >= 0.25) acc = 0;
     } else if (scr === "scr-title" && acc >= 1 / 30) {
