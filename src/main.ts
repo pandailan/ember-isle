@@ -4,7 +4,7 @@ import { net } from "./net";
 import { show } from "./ui";
 import { $ } from "./util";
 import { openTown, townDoorBump, showEnding, bindTownScreens } from "./town";
-import { openDraft, openTavern, bindTavern } from "./tavern";
+import { openDraft, openTavern, openCard, bindTavern } from "./tavern";
 import {
   enterDungeon, enterWalk, backToDungeon, turn, step, usePotionField,
   bindDungeonControls, rescueParty, combatWon, combatFled, dlog,
@@ -34,6 +34,7 @@ app.townDoor = townDoorBump;
 app.dlog = dlog;
 app.enterWalk = enterWalk;
 app.adoptCombat = adoptCombat;
+app.openCard = openCard;
 
 /* ============================== TITLE ============================== */
 function initTitle(): void {

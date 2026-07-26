@@ -2,6 +2,8 @@ import type { Member, EnemyInst } from "./types";
 import { state } from "./state";
 import { $ } from "./util";
 import { drawMonster } from "./render";
+import { paintFaces } from "./portraits";
+import { app } from "./bus";
 
 export let currentScreen = "scr-title";
 
@@ -12,7 +14,8 @@ export function show(id: string): void {
 }
 
 export function plaqueHTML(m: Member): string {
-  return `<div class="plaque${m.down ? " down" : ""}">
+  return `<div class="plaque${m.down ? " down" : ""}" data-card="${m.id}">
+    <canvas class="cardface pportrait" width="96" height="96" data-face="${m.id}" data-cls="${m.cls}" data-rarity="${m.rarity}"></canvas>
     <span class="pname">${m.name}</span>
     <div class="bar hp"><i style="width:${Math.max(0, 100 * m.hp / m.maxhp)}%"></i></div>
     ${m.maxmp > 0 ? `<div class="bar mp"><i style="width:${Math.max(0, 100 * m.mp / m.maxmp)}%"></i></div>` : ""}
@@ -21,7 +24,15 @@ export function plaqueHTML(m: Member): string {
 }
 
 export function renderPlaques(elId: string): void {
-  $(elId).innerHTML = state.party.map(m => plaqueHTML(m)).join("");
+  const el = $(elId);
+  el.innerHTML = state.party.map(m => plaqueHTML(m)).join("");
+  paintFaces(el);
+  if (elId === "dg-plaques") { // in the walking view a plaque opens the character sheet
+    el.querySelectorAll<HTMLElement>(".plaque").forEach(p => {
+      p.style.cursor = "pointer";
+      p.onclick = () => app.openCard(p.dataset.card!, false);
+    });
+  }
 }
 
 export function renderFoesData(enemies: EnemyInst[]): void {

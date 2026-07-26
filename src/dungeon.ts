@@ -3,17 +3,19 @@ import { state, save, cellAt, markVisited, allCards, mobAt, isSaveEnabled } from
 import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
-import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID } from "./data";
+import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID, ITEMS } from "./data";
+import { findCarrier } from "./items";
 import { potionHeal } from "./traits";
 import { spawnMobs } from "./cards";
 import { view, amap, renderView } from "./render";
 import { net } from "./net";
-import { setScene, setWeatherAudio, sfx } from "./audio";
-import { phaseName, WEATHER_MSGS, PHASE_MSGS } from "./daytime";
+import { setScene, setWeatherAudio, setDaylight, sfx } from "./audio";
+import { phaseName, hourOf, WEATHER_MSGS, PHASE_MSGS } from "./daytime";
 import type { Weather } from "./types";
 
 const dungeonScene = () =>
-  state.level === 0 || state.level === 3 ? "town" as const
+  state.level === 0 ? "town" as const
+  : state.level === 3 ? "moor" as const
   : state.level >= 2 ? "deep" as const : "dungeon" as const;
 
 let logLines: string[] = [];
@@ -29,6 +31,8 @@ export function advanceTime(mins: number, weatherTicks = 1): void {
   if (phase !== prevPhase && outdoors() && PHASE_MSGS[phase]) dlog(PHASE_MSGS[phase]);
   state.weatherLeft -= weatherTicks;
   if (state.weatherLeft <= 0) rollWeather();
+  const hr = hourOf(state.clock);
+  setDaylight(hr >= 6 && hr < 19.5);
 }
 
 function rollWeather(): void {
@@ -41,7 +45,11 @@ function rollWeather(): void {
 }
 
 /** Re-assert the weather soundscape when the walking view (re)opens. */
-export function syncWeatherAudio(): void { setWeatherAudio(state.weather as Weather, outdoors()); }
+export function syncWeatherAudio(): void {
+  setWeatherAudio(state.weather as Weather, outdoors());
+  const hr = hourOf(state.clock);
+  setDaylight(hr >= 6 && hr < 19.5);
+}
 
 export function getLogLines(): string[] { return logLines; }
 export function setLogLines(l: string[]): void { logLines = l; redrawLog(); }
@@ -189,9 +197,16 @@ async function onEnterCell(raw: string): Promise<void> {
     const got: string[] = [];
     if (loot.gold) { state.gold += loot.gold; got.push(loot.gold + " gold"); }
     if (loot.potions) { state.potions += loot.potions; got.push(loot.potions + " potion" + (loot.potions > 1 ? "s" : "")); }
+    const left: string[] = [];
+    for (const id of loot.items ?? []) {
+      const carrier = findCarrier(state.party, id);
+      if (carrier) { carrier.items.push(id); got.push(`${ITEMS[id].n} (${carrier.name})`); }
+      else left.push(ITEMS[id].n);
+    }
     if (loot.charm) { state.charm = true; got.push("the Emberward Charm (DEF +2 for all)"); }
     sfx("chest");
     dlog(`You pry open ${loot.note || "a chest"} — ${got.join(", ")}.`);
+    if (left.length) dlog(`No room to carry: ${left.join(", ")}. It stays in the chest's shadow.`);
     updateHUD(); save(); renderView(); return;
   }
   if (raw === "F") {

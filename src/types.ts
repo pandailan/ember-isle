@@ -26,6 +26,8 @@ export interface EnemyDef {
   n: string; hp: number; atk: number; def: number; spd: number;
   xp: number; g: number; hue: string;
   undead?: boolean; pierce?: boolean; caster?: boolean; boss?: boolean;
+  /** Trophy this creature may leave behind: [item id, chance 0..1]. */
+  drop?: [string, number];
 }
 
 export interface EnemyInst extends EnemyDef { maxhp: number; key: string; }
@@ -41,11 +43,16 @@ export interface Member {
   lvl: number; xp: number;
   hp: number; maxhp: number; mp: number; maxmp: number;
   atk: number; def: number; spd: number;
+  /** Body: strength and constitution set what a card can carry. */
+  str: number; con: number;
+  ap: number;         // unspent attribute points (+1 per level)
+  pack: number;       // backpack tier (index into PACKS)
+  items: string[];    // carried item ids (ITEMS)
   wTier: number; aTier: number; down: boolean;
   guard?: boolean;
 }
 
-export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; note?: string; }
+export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; note?: string; items?: string[]; }
 
 /** A monster pack living on the map — visible in the corridor, chases the party. */
 export interface Mob { x: number; y: number; key: string; group: string[]; }

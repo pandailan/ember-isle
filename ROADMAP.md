@@ -51,6 +51,17 @@
   the harbor; reeds, fallen logs, and standing stones on the moor; stalagmites
   and old bones in the deeps.
 
+- **Cards with faces & backpacks** — every card gets a procedural painted
+  portrait (deterministic per card, dressed by class, framed by rarity), shown
+  in the tavern, draft, party bar, and combat. Clicking a card or plaque opens
+  the character sheet: STR/CON attributes (+1 point per level to spend),
+  equipment with weights, and a slot-based backpack. Carry capacity comes from
+  STR, CON, and the pack (Belt Pouch → Satchel → Rucksack at Provisions);
+  wolves, golems, cultists, and skeletons drop trophies that weigh real weight
+  and sell at the shop; an overloaded card fights slower. A dedicated moor
+  music theme, gulls over the harbor by day, and wolf howls across the moor at
+  night round out the soundscape.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

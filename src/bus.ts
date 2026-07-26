@@ -28,6 +28,8 @@ export interface AppBus {
   combatFled(): void;
   /** Host migration: rebuild a synced fight locally and carry on. */
   adoptCombat(enemies: EnemyInst[]): void;
+  /** Character sheet overlay; atTavern enables bench/march swaps. */
+  openCard(id: string, atTavern?: boolean): void;
 }
 
 export const app = {} as AppBus;

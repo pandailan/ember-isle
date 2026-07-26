@@ -1,5 +1,5 @@
 import type { Member, Rarity, GameState, Mob } from "./types";
-import { CLASSES, GROUPS, MAPS } from "./data";
+import { CLASSES, CLASS_BODY, GROUPS, MAPS, ITEMS, PACKS } from "./data";
 import { TRAITS, hasTrait } from "./traits";
 import { rnd, ri } from "./util";
 
@@ -51,17 +51,19 @@ export function makeCard(takenNames: Set<string>, cls?: string, rarity?: Rarity)
   const cn = cls ?? CLASS_NAMES[ri(CLASS_NAMES.length)];
   const r = rarity ?? rollRarity();
   const base = CLASSES[cn];
+  const body = CLASS_BODY[cn];
   const m: Member = {
     id: genId(), name: makeName(r, takenNames), cls: cn,
     rarity: r, traits: [], skills: [], sp: 0,
     lvl: 1, xp: 0,
     hp: base.hp, maxhp: base.hp, mp: base.mp, maxmp: base.mp,
     atk: base.atk, def: base.def, spd: base.spd,
+    str: body.str, con: body.con, ap: 0, pack: 0, items: [],
     wTier: 0, aTier: 0, down: false,
   };
   // roll bonus stat points (hp points are worth 2 HP)
-  const stats: ("hp" | "atk" | "def" | "spd" | "mp")[] = base.mp > 0
-    ? ["hp", "atk", "def", "spd", "mp"] : ["hp", "atk", "def", "spd"];
+  const stats: ("hp" | "atk" | "def" | "spd" | "mp" | "str" | "con")[] = base.mp > 0
+    ? ["hp", "atk", "def", "spd", "mp", "str", "con"] : ["hp", "atk", "def", "spd", "str", "con"];
   for (let p = 0; p < RARITY_POINTS[r]; p++) {
     const s = stats[ri(stats.length)];
     if (s === "hp") { m.maxhp += 2; m.hp += 2; }
@@ -136,6 +138,7 @@ export function sanitizeCard(raw: unknown): Member | null {
   const strArr = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((s): s is string => typeof s === "string").slice(0, 12) : [];
   const maxhp = num(c.maxhp, 1, 999, 20), maxmp = num(c.maxmp, 0, 999, 0);
+  const body = CLASS_BODY[c.cls];
   return {
     id: typeof c.id === "string" ? c.id.slice(0, 24) : genId(),
     name: typeof c.name === "string" ? c.name.slice(0, 40) : "Stranger",
@@ -147,6 +150,10 @@ export function sanitizeCard(raw: unknown): Member | null {
     maxhp, hp: num(c.hp, 0, maxhp, maxhp),
     maxmp, mp: num(c.mp, 0, maxmp, maxmp),
     atk: num(c.atk, 1, 99, 5), def: num(c.def, 0, 99, 3), spd: num(c.spd, 1, 99, 5),
+    str: num(c.str, 1, 99, body.str), con: num(c.con, 1, 99, body.con),
+    ap: num(c.ap, 0, 99, 0),
+    pack: num(c.pack, 0, PACKS.length - 1, 0),
+    items: strArr(c.items).filter(id => ITEMS[id]),
     wTier: num(c.wTier, 0, 3, 0), aTier: num(c.aTier, 0, 3, 0),
     down: c.down === true,
   };
@@ -171,6 +178,15 @@ export function migrateState(s: GameState & {version?: number}): GameState {
   s.clock = s.clock ?? 1230; // clocks and weather arrived after some saves too
   s.weather = s.weather ?? "clear";
   s.weatherLeft = s.weatherLeft ?? 70;
+  // bodies and backpacks arrived later still: seed every card, old points included
+  for (const m of [...(s.party ?? []), ...(s.collection ?? []), ...(s.visitors ?? [])]) {
+    const body = CLASS_BODY[m.cls] ?? {str: 4, con: 5};
+    m.str = m.str ?? body.str;
+    m.con = m.con ?? body.con;
+    m.ap = m.ap ?? Math.max(0, (m.lvl ?? 1) - 1);
+    m.pack = m.pack ?? 0;
+    m.items = m.items ?? [];
+  }
   if (s.version === 2) return s;
   for (const m of s.party ?? []) {
     m.id = m.id ?? genId();
@@ -191,6 +207,7 @@ export function migrateState(s: GameState & {version?: number}): GameState {
 export function cardHTML(m: Member, extra = ""): string {
   const traitChips = m.traits.map(t => `<span class="chip" title="${TRAITS[t]?.desc ?? ""}">${TRAITS[t]?.n ?? t}</span>`).join("");
   return `<div class="rcard r${m.rarity}${m.down ? " carddown" : ""}" data-card="${m.id}">
+    <canvas class="cardface" width="96" height="96" data-face="${m.id}" data-cls="${m.cls}" data-rarity="${m.rarity}"></canvas>
     <span class="rname">${m.name}</span>
     <span class="rcls">${RARITY_NAMES[m.rarity]} ${m.cls} · L${m.lvl}${m.sp > 0 ? " · ✦" + m.sp : ""}</span>
     <span class="rstats">HP ${m.hp}/${m.maxhp}${m.maxmp > 0 ? " · MP " + m.mp + "/" + m.maxmp : ""} · ATK ${m.atk} · DEF ${m.def} · SPD ${m.spd}</span>

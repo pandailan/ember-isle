@@ -2,7 +2,7 @@ import { state, save, allCards } from "./state";
 import { app } from "./bus";
 import { show } from "./ui";
 import { $ } from "./util";
-import { WBONUS, WCOST, WNAME, ABONUS, ACOST, ANAME } from "./data";
+import { WBONUS, WCOST, WNAME, ABONUS, ACOST, ANAME, ITEMS, PACKS } from "./data";
 import { net } from "./net";
 import { setScene, sfx } from "./audio";
 
@@ -79,6 +79,15 @@ export function openShop(): void {
     d.appendChild(b); list.appendChild(d);
   }
   row("Healing Potion", "restores 35 HP, anywhere", "Buy · 25 g", 25, () => { state.gold -= 25; state.potions++; save(); });
+  // the shopkeep buys what the wilds gave up
+  for (const m of state.party) {
+    m.items.forEach((iid, idx) => {
+      const it = ITEMS[iid];
+      if (!it) return;
+      row(`Sell ${it.n}`, `${m.name} carries it · ${it.w} wt`, `+${it.sell} g`, 0,
+        () => { state.gold += it.sell; m.items.splice(idx, 1); save(); });
+    });
+  }
   for (const m of state.party) {
     if (m.wTier < 3) {
       const c = WCOST[m.wTier];
@@ -89,6 +98,11 @@ export function openShop(): void {
       const c = ACOST[m.aTier];
       row(`${m.name} — ${ANAME[m.aTier + 1]}`, `armor · DEF +${ABONUS[m.aTier + 1] - ABONUS[m.aTier]}`, `${c} g`, c,
         () => { state.gold -= c; m.aTier++; save(); });
+    }
+    if (m.pack < PACKS.length - 1) {
+      const nx = PACKS[m.pack + 1], c = nx.price;
+      row(`${m.name} — ${nx.n}`, `pack · ${nx.slots} slots · carries ×${nx.mult}`, `${c} g`, c,
+        () => { state.gold -= c; m.pack++; save(); });
     }
   }
   show("scr-shop");

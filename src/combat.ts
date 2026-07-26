@@ -1,5 +1,6 @@
 import type { Member, EnemyInst, CombatState, PlayerCmd } from "./types";
-import { CLASSES, SPELLS, ENEMIES, ENC_GRACE } from "./data";
+import { CLASSES, SPELLS, ENEMIES, ENC_GRACE, ITEMS } from "./data";
+import { findCarrier } from "./items";
 import { state, save, alive, defOf, xpNeed } from "./state";
 import {
   atkOf, critOf, spdOf, mitigate, healAmount, spellPower, spellCost,
@@ -373,8 +374,9 @@ async function combatVictory(): Promise<void> {
       const g = CLASSES[m.cls].g;
       m.maxhp += g.hp; m.hp += g.hp; m.maxmp += g.mp; m.mp += g.mp;
       m.atk += g.atk; m.def += g.def; m.spd += g.spd;
+      m.ap++;
       sfx("levelup");
-      clog(`${m.name} reaches level ${m.lvl}!`);
+      clog(`${m.name} reaches level ${m.lvl}! (+1 attribute point)`);
       if (m.lvl % 2 === 0) { m.sp++; clog(`${m.name} earns a skill point — spend it at the tavern.`); }
       const learned = CLASSES[m.cls].spells.filter(([, l]) => l === m.lvl).map(([s]) => SPELLS[s].n);
       if (learned.length) clog(`${m.name} learns ${learned.join(", ")}!`);
@@ -382,6 +384,15 @@ async function combatVictory(): Promise<void> {
     }
   }
   renderPlaques("cb-plaques");
+  // trophies: some foes leave something worth hauling home
+  for (const e of combat.enemies) {
+    const drop = ENEMIES[e.key]?.drop;
+    if (!drop || rnd() > drop[1]) continue;
+    const it = ITEMS[drop[0]];
+    const carrier = findCarrier(state.party, drop[0]);
+    if (carrier) { carrier.items.push(drop[0]); clog(`${carrier.name} takes the ${it.n.toLowerCase()} (${it.w} wt).`); }
+    else clog(`A ${it.n.toLowerCase()} is left behind — every back is full.`);
+  }
   if (rnd() < 0.22 && !combat.isBoss) { state.potions++; clog("Among the remains: a stoppered potion, intact."); }
   if (combat.isBoss) {
     state.bossDown = true; state.heart = true;

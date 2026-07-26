@@ -4,7 +4,7 @@
    (chords, bass, lead, drums in battle), an echo send for melodies, and
    layered, biome-aware sound effects. */
 
-export type Scene = "off" | "town" | "dungeon" | "deep" | "combat";
+export type Scene = "off" | "town" | "moor" | "dungeon" | "deep" | "combat";
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -98,7 +98,7 @@ function applyRain(): void {
   if (!ctx) return;
   ensureRainLoop();
   if (!rainGain) return;
-  const target = weatherOutdoors && scene === "town"
+  const target = weatherOutdoors && (scene === "town" || scene === "moor")
     ? (curWeather === "storm" ? 0.34 : curWeather === "rain" ? 0.2 : 0) : 0;
   rainGain.gain.setTargetAtTime(target, ctx.currentTime, 1.2);
 }
@@ -165,6 +165,16 @@ interface SceneMusic {
 }
 
 const MUSIC: Record<Exclude<Scene, "off">, SceneMusic> = {
+  moor: {
+    bpm: 58, root: 123.47, // B — wide, lonely, wind over heather
+    bars: [[0, 3, 10], [0, 3, 10], [-2, 5, 8], [-4, 3, 7]],
+    scale: [0, 3, 5, 7, 10, 12, 15],
+    leadDensity: 0.1,
+    leadPatch: {type: "sine", cutoff: 1600, a: 0.08, r: 0.7, toEcho: true},
+    padPatch: {type: "sawtooth", cutoff: 260, a: 1.8, r: 2.2},
+    bassPatch: {type: "sine", cutoff: 260, a: 0.08, r: 0.5},
+    drums: false, wet: 0.46, padVol: 0.045, bassVol: 0.085, leadVol: 0.05,
+  },
   town: {
     bpm: 84, root: 146.83, // D
     bars: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]],
@@ -207,6 +217,48 @@ const MUSIC: Record<Exclude<Scene, "off">, SceneMusic> = {
   },
 };
 
+/* ============================== LIVING AMBIENCE ============================== */
+let daylight = false;
+export function setDaylight(d: boolean): void { daylight = d; }
+
+function gullCry(): void {
+  if (!ctx || !dry || muted) return;
+  const t = ctx.currentTime;
+  for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) {
+    const o = ctx.createOscillator(), g2 = ctx.createGain();
+    o.type = "sawtooth";
+    const t0 = t + i * (0.24 + Math.random() * 0.1);
+    o.frequency.setValueAtTime(1250 + Math.random() * 250, t0);
+    o.frequency.exponentialRampToValueAtTime(700 + Math.random() * 120, t0 + 0.22);
+    g2.gain.setValueAtTime(0, t0);
+    g2.gain.linearRampToValueAtTime(0.035, t0 + 0.03);
+    g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.26);
+    const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1500; f.Q.value = 2;
+    o.connect(f); f.connect(g2); g2.connect(dry);
+    if (dryVerbIn) g2.connect(dryVerbIn);
+    o.start(t0); o.stop(t0 + 0.3);
+  }
+}
+
+function wolfHowl(): void {
+  if (!ctx || !dryVerbIn || muted) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(), g2 = ctx.createGain();
+  o.type = "sine";
+  const base = 200 + Math.random() * 60;
+  o.frequency.setValueAtTime(base, t);
+  o.frequency.linearRampToValueAtTime(base * 1.9, t + 0.55);
+  o.frequency.setValueAtTime(base * 1.9, t + 1.1);
+  o.frequency.linearRampToValueAtTime(base * 1.4, t + 1.9);
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(0.05, t + 0.5);
+  g2.gain.setValueAtTime(0.05, t + 1.2);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 2.1);
+  o.connect(g2);
+  g2.connect(dryVerbIn); // far away: all reverb, no dry signal
+  o.start(t); o.stop(t + 2.2);
+}
+
 let schedTimer: ReturnType<typeof setInterval> | null = null;
 let nextBeat = 0;      // absolute ctx time of the next 8th note
 let beatIndex = 0;     // running 8th-note counter
@@ -232,6 +284,9 @@ function startScheduler(): void {
       nextBeat += eighth;
       beatIndex++;
     }
+    // the isle breathes: gulls by day in the harbor, wolves by night on the moor
+    if (scene === "town" && daylight && Math.random() < 0.006) gullCry();
+    if (scene === "moor" && !daylight && Math.random() < 0.004) wolfHowl();
   }, 120);
 }
 
@@ -271,7 +326,7 @@ export function sfx(name: Sfx): void {
   const q = (f: number, dur: number, type: OscillatorType, vol: number, delay = 0, patch?: Partial<Patch>) =>
     note(f, t + delay, dur, vol, {type, cutoff: patch?.cutoff ?? 2500, a: patch?.a ?? 0.008, r: patch?.r ?? dur * 0.6, toEcho: patch?.toEcho});
   switch (name) {
-    case "step":    noiseHit(t, 0.05, scene === "town" ? 0.16 : 0.1, scene === "town" ? 900 : 480); break;
+    case "step":    noiseHit(t, 0.05, scene === "town" ? 0.16 : 0.1, scene === "town" ? 900 : scene === "moor" ? 620 : 480); break;
     case "bump":    q(75, 0.12, "square", 0.16); noiseHit(t, 0.08, 0.2, 220); break;
     case "hit":     noiseHit(t, 0.08, 0.3, 1900); q(150, 0.12, "sawtooth", 0.15); noiseHit(t + 0.02, 0.05, 0.12, 4000, "highpass"); break;
     case "crit":    noiseHit(t, 0.12, 0.36, 2600); q(300, 0.2, "sawtooth", 0.2); q(90, 0.24, "sine", 0.25); break;

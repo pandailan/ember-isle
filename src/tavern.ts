@@ -5,7 +5,10 @@ import { show } from "./ui";
 import { $ } from "./util";
 import { cardHTML, rollDraft, rollVisitors, todayStamp, RECRUIT_COST, RARITY_NAMES, RARITY_HUES } from "./cards";
 import { TRAITS, SKILL_TREES, buySkill, spellsOf } from "./traits";
-import { SPELLS } from "./data";
+import { SPELLS, ITEMS, PACKS, WNAME, WBONUS, ANAME, ABONUS } from "./data";
+import { carryMax, carryW, weaponW, armorW, packUsed, overloaded } from "./items";
+import { drawPortraitTo, paintFaces } from "./portraits";
+import { net } from "./net";
 import { sfx } from "./audio";
 
 /* ============================== CARD PICKER ============================== */
@@ -20,6 +23,7 @@ export function openPicker(
   $("draft-blurb").innerHTML = texts.blurb;
   const box = $("draft-roster");
   box.innerHTML = cards.map(c => cardHTML(c)).join("");
+  paintFaces(box);
   const bt = $("bt-setout") as HTMLButtonElement;
   const refresh = () => {
     box.querySelectorAll<HTMLElement>(".rcard").forEach(e2 =>
@@ -76,6 +80,7 @@ export function openTavern(msg?: string): void {
   company.innerHTML = allCards().map(c =>
     cardHTML(c, state.party.some(p => p.id === c.id)
       ? `<span class="inparty">✦ marching</span>` : "")).join("");
+  paintFaces(company);
   company.querySelectorAll<HTMLElement>(".rcard").forEach(el => {
     el.onclick = () => openCard(el.dataset.card!);
   });
@@ -86,6 +91,7 @@ export function openTavern(msg?: string): void {
   } else {
     vis.innerHTML = state.visitors.map(c =>
       cardHTML(c, `<button class="recruit" data-r="${c.id}">Recruit · ${RECRUIT_COST[c.rarity]} g</button>`)).join("");
+    paintFaces(vis);
     vis.querySelectorAll<HTMLButtonElement>("button.recruit").forEach(b => {
       const card = state.visitors.find(c => c.id === b.dataset.r)!;
       b.disabled = state.gold < RECRUIT_COST[card.rarity];
@@ -120,16 +126,36 @@ function findCard(id: string): Member | undefined {
   return allCards().find(c => c.id === id);
 }
 
-export function openCard(id: string): void {
+export function openCard(id: string, atTavern = true): void {
   const m = findCard(id);
   if (!m) return;
   const ov = $("card-overlay");
   ov.hidden = false;
 
   const inParty = state.party.some(p => p.id === m.id);
+  const canEdit = net.role !== "guest" && !state.coopGuestIds?.includes(m.id);
   $("card-head").innerHTML = `
-    <h3 style="color:${RARITY_HUES[m.rarity]}">${m.name}</h3>
-    <p class="dim" style="font-size:.85rem;">${RARITY_NAMES[m.rarity]} ${m.cls} · Level ${m.lvl} · ${m.sp} skill point${m.sp === 1 ? "" : "s"}</p>`;
+    <div class="sheethead">
+      <canvas id="sheet-face" width="96" height="96"></canvas>
+      <div>
+        <h3 style="color:${RARITY_HUES[m.rarity]}">${m.name}</h3>
+        <p class="dim" style="font-size:.85rem;">${RARITY_NAMES[m.rarity]} ${m.cls} · Level ${m.lvl} · ${m.sp} skill point${m.sp === 1 ? "" : "s"}</p>
+        <p class="attrline">STR ${m.str}${canEdit && m.ap > 0 ? `<button class="attrbtn" data-attr="str">+</button>` : ""}
+          &nbsp;CON ${m.con}${canEdit && m.ap > 0 ? `<button class="attrbtn" data-attr="con">+</button>` : ""}
+          ${m.ap > 0 ? `<span class="apnote">· ${m.ap} attribute point${m.ap === 1 ? "" : "s"}</span>` : ""}</p>
+      </div>
+    </div>`;
+  drawPortraitTo($("sheet-face") as HTMLCanvasElement, m);
+  $("card-head").querySelectorAll<HTMLButtonElement>(".attrbtn").forEach(b => {
+    b.onclick = () => {
+      if (m.ap <= 0) return;
+      m.ap--;
+      if (b.dataset.attr === "str") m.str++;
+      else { m.con++; m.maxhp += 2; m.hp += 2; }
+      save(); sfx("levelup");
+      openCard(m.id, atTavern);
+    };
+  });
 
   const traits = m.traits.length
     ? m.traits.map(t => `<div class="trow"><b>${TRAITS[t]?.n}</b><span class="dim">${TRAITS[t]?.desc}</span></div>`).join("")
@@ -151,20 +177,44 @@ export function openCard(id: string): void {
     }).join("") + `</div>`;
   }).join("");
 
+  const w = carryW(m), wmax = carryMax(m), pk = PACKS[m.pack];
+  const itemCells = m.items.map((iid, idx) => {
+    const it = ITEMS[iid];
+    return `<div class="islot filled" style="grid-column:span ${it.size}" title="${it.desc}">
+      <b>${it.n}</b><span>${it.w} wt · sells ${it.sell} g</span>
+      ${canEdit ? `<button class="idrop" data-i="${idx}">Drop</button>` : ""}</div>`;
+  }).join("");
+  const empties = Array.from({length: Math.max(0, pk.slots - packUsed(m))}, () => `<div class="islot"><span class="dim">empty</span></div>`).join("");
   $("card-body").innerHTML = `
     <p class="dim" style="font-size:.82rem;">HP ${m.hp}/${m.maxhp}${m.maxmp > 0 ? ` · MP ${m.mp}/${m.maxmp}` : ""} · ATK ${m.atk} · DEF ${m.def} · SPD ${m.spd}</p>
     <p class="dim" style="font-size:.82rem;">Spells &amp; arts: ${spells}</p>
+    <div class="traitbox">
+      <div class="trow"><b>Weapon</b><span class="dim">${WNAME[m.wTier]} · ATK +${WBONUS[m.wTier]} · ${weaponW(m)} wt</span></div>
+      <div class="trow"><b>Armor</b><span class="dim">${ANAME[m.aTier]} · DEF +${ABONUS[m.aTier]} · ${armorW(m)} wt</span></div>
+      <div class="trow"><b>Pack</b><span class="dim">${pk.n} · ${pk.slots} slots · carries ×${pk.mult} (better packs at Provisions)</span></div>
+    </div>
+    <div class="packgrid">${itemCells}${empties}</div>
+    <div class="wbar"><i style="width:${Math.min(100, w / wmax * 100)}%;${w > wmax ? "background:var(--ember)" : ""}"></i></div>
+    <p class="dim" style="font-size:.78rem;">Load ${w} / ${wmax} wt${overloaded(m) ? " — overloaded: slower in battle. Sell or drop something." : ""}</p>
     <div class="traitbox">${traits}</div>
     <div class="skilltree">${treeHTML}</div>`;
+  $("card-body").querySelectorAll<HTMLButtonElement>(".idrop").forEach(b => {
+    b.onclick = () => {
+      const dropped = m.items.splice(Number(b.dataset.i), 1)[0];
+      save(); sfx("tap");
+      app.dlog?.(`${m.name} leaves the ${ITEMS[dropped]?.n ?? "item"} by the road.`);
+      openCard(m.id, atTavern);
+    };
+  });
 
-  const onLoan = !!state.coopGuestIds?.includes(m.id);
+  const onLoan = !canEdit;
   if (!onLoan) {
     $("card-body").querySelectorAll<HTMLButtonElement>(".skillnode.avail").forEach(b => {
       b.onclick = () => {
         const err = buySkill(m, b.dataset.node!);
         if (err) { $("tav-msg").textContent = err; return; }
         save(); sfx("levelup");
-        openCard(m.id);
+        openCard(m.id, atTavern);
       };
     });
   } else {
@@ -182,6 +232,13 @@ export function openCard(id: string): void {
     close0.textContent = "Close"; close0.className = "primary";
     close0.onclick = () => { $("card-overlay").hidden = true; };
     actions.appendChild(close0);
+    return;
+  }
+  if (!atTavern) {
+    const close2 = document.createElement("button");
+    close2.textContent = "Close"; close2.className = "primary";
+    close2.onclick = closeCard;
+    actions.appendChild(close2);
     return;
   }
   const swap = document.createElement("button");

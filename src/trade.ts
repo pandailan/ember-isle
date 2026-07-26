@@ -4,6 +4,7 @@ import { net } from "./net";
 import { show, currentScreen } from "./ui";
 import { $ } from "./util";
 import { cardHTML, sanitizeCard, RARITY_NAMES } from "./cards";
+import { paintFaces } from "./portraits";
 import { sfx } from "./audio";
 
 /* The Trading Post: 1-for-1 card swaps (plus an optional gold sweetener from
@@ -84,6 +85,7 @@ function render(): void {
         <button id="bt-trade-decline">Decline</button>
       </div>
     </div>`;
+    paintFaces(inc);
     $("bt-trade-accept").onclick = acceptOffer;
     $("bt-trade-decline").onclick = () => {
       incoming = null; net.send({t: "trade_decline"});
@@ -101,6 +103,7 @@ function render(): void {
     theirs.innerHTML = `<p class="dim" style="font-size:.85rem;">They carry nothing they can part with.</p>`;
   } else {
     theirs.innerHTML = partnerCards.map(c => cardHTML(c)).join("");
+    paintFaces(theirs);
     theirs.querySelectorAll<HTMLElement>(".rcard").forEach(el => {
       el.classList.toggle("sel", el.dataset.card === theirPick);
       el.onclick = () => { theirPick = el.dataset.card!; sfx("tap"); render(); };
@@ -111,6 +114,7 @@ function render(): void {
   const mineEl = $("trade-mine");
   mineEl.innerHTML = mine.length ? mine.map(c => cardHTML(c)).join("")
     : `<p class="dim" style="font-size:.85rem;">You carry nothing you can part with.</p>`;
+  paintFaces(mineEl);
   mineEl.querySelectorAll<HTMLElement>(".rcard").forEach(el => {
     el.classList.toggle("sel", el.dataset.card === myPick);
     el.onclick = () => { myPick = el.dataset.card!; sfx("tap"); render(); };

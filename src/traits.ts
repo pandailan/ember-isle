@@ -1,5 +1,6 @@
 import type { Member, TraitDef, SkillNode, SkillFlag, SpellDef } from "./types";
 import { CLASSES, WBONUS } from "./data";
+import { overloaded } from "./items";
 
 /* ============================== TRAITS ============================== */
 /* Rolled onto cards at creation; every trait has a real mechanical hook. */
@@ -93,7 +94,8 @@ export function critOf(m: Member): number {
 }
 
 export function spdOf(m: Member): number {
-  return m.spd + (hasTrait(m, "torchblood") && m.hp < m.maxhp / 2 ? 2 : 0);
+  const base = m.spd + (hasTrait(m, "torchblood") && m.hp < m.maxhp / 2 ? 2 : 0);
+  return overloaded(m) ? Math.max(1, Math.round(base * 0.75)) : base; // a heavy pack drags
 }
 
 /** Damage arriving at a card, after guard, stoneskin and fire wards. */

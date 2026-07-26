@@ -9,6 +9,30 @@ export const CLASSES: Record<string, ClassDef> = {
   Sorcerer:{hp:18, mp:16, atk:4, def:2, spd:6, g:{hp:3,mp:5,atk:1,def:0,spd:1}, spells:[["fire",1],["wave",4]]},
 };
 
+/** Body baselines per class: strength and constitution govern carrying. */
+export const CLASS_BODY: Record<string, {str: number; con: number}> = {
+  Knight: {str: 7, con: 7}, Paladin: {str: 6, con: 7}, Ranger: {str: 5, con: 5},
+  Rogue: {str: 4, con: 4}, Cleric: {str: 4, con: 6}, Sorcerer: {str: 3, con: 4},
+};
+
+/* ============================== ITEMS & PACKS ============================== */
+export interface ItemDef { n: string; w: number; size: number; sell: number; desc: string; }
+export const ITEMS: Record<string, ItemDef> = {
+  pelt:      {n: "Moor-Wolf Pelt", w: 3, size: 1, sell: 18, desc: "Thick, grey, still smelling of rain."},
+  bonecharm: {n: "Bone Charm",     w: 1, size: 1, sell: 12, desc: "Someone's luck. It ran out."},
+  sigil:     {n: "Cinder Sigil",   w: 1, size: 1, sell: 35, desc: "A cultist's badge, warm to the touch."},
+  core:      {n: "Golem Core",     w: 5, size: 2, sell: 60, desc: "A fist of dead stone that hums faintly."},
+  relic:     {n: "Barrow Relic",   w: 2, size: 1, sell: 45, desc: "Older than the town. Maybe the isle."},
+  shard:     {n: "Ember Shard",    w: 1, size: 1, sell: 30, desc: "A splinter of the fire below."},
+};
+export interface PackDef { n: string; slots: number; mult: number; price: number; }
+/** Backpacks: more room, and a frame that carries the load better. */
+export const PACKS: PackDef[] = [
+  {n: "Belt Pouch", slots: 3, mult: 1,    price: 0},
+  {n: "Satchel",    slots: 5, mult: 1.15, price: 60},
+  {n: "Rucksack",   slots: 8, mult: 1.35, price: 170},
+];
+
 export const SPELLS: Record<string, SpellDef> = {
   heal:  {n:"Heal",        mp:4,  kind:"ally",    d:m=>20+2*m.lvl, txt:"mends"},
   prayer:{n:"Prayer",      mp:10, kind:"allies",  d:m=>14+m.lvl,   txt:"mends"},
@@ -27,12 +51,12 @@ export const ENEMIES: Record<string, EnemyDef> = {
   rat: {n:"Cave Rat",     hp:12, atk:6,  def:0, spd:9, xp:8,  g:5,  hue:"#8a7a52"},
   sli: {n:"Green Slime",  hp:16, atk:5,  def:3, spd:3, xp:10, g:7,  hue:"#7fae6a"},
   gob: {n:"Goblin",       hp:18, atk:8,  def:2, spd:6, xp:14, g:12, hue:"#a3913c"},
-  ske: {n:"Skeleton",     hp:24, atk:9,  def:3, spd:5, xp:20, g:14, hue:"#b8b0a0", undead:true},
+  ske: {n:"Skeleton",     hp:24, atk:9,  def:3, spd:5, xp:20, g:14, hue:"#b8b0a0", undead:true, drop:["bonecharm",.25]},
   orc: {n:"Orc Raider",   hp:36, atk:13, def:4, spd:6, xp:36, g:26, hue:"#a86a3c"},
   wra: {n:"Cave Wraith",  hp:30, atk:11, def:2, spd:8, xp:42, g:20, hue:"#7fa8bd", undead:true, pierce:true},
-  cul: {n:"Ember Cultist",hp:32, atk:9,  def:3, spd:6, xp:45, g:30, hue:"#c8502f", caster:true},
-  gol: {n:"Stone Golem",  hp:55, atk:14, def:8, spd:2, xp:60, g:40, hue:"#8a8a8a"},
-  wlf: {n:"Moor Wolf",    hp:20, atk:9,  def:1, spd:11,xp:16, g:10, hue:"#8a9aa8"},
+  cul: {n:"Ember Cultist",hp:32, atk:9,  def:3, spd:6, xp:45, g:30, hue:"#c8502f", caster:true, drop:["sigil",.35]},
+  gol: {n:"Stone Golem",  hp:55, atk:14, def:8, spd:2, xp:60, g:40, hue:"#8a8a8a", drop:["core",.5]},
+  wlf: {n:"Moor Wolf",    hp:20, atk:9,  def:1, spd:11,xp:16, g:10, hue:"#8a9aa8", drop:["pelt",.6]},
   boss:{n:"Pyrelord Vhal",hp:240,atk:17, def:6, spd:7, xp:600,g:500,hue:"#e09a3c", boss:true},
 };
 
@@ -104,8 +128,8 @@ export const LEVEL_NAMES: Record<number, string> = {
 
 export const CHESTS: Record<string, ChestLoot> = {
   "3:14,3":{gold:55, potions:1, note:"a peddler's abandoned pack"},
-  "3:2,6": {gold:70, potions:1, note:"a barrow-stone cache"},
-  "1:13,1":{gold:60, potions:1, note:"a smuggler's cache"},
+  "3:2,6": {gold:70, potions:1, note:"a barrow-stone cache", items:["relic"]},
+  "1:13,1":{gold:60, potions:1, note:"a smuggler's cache", items:["shard"]},
   "1:1,9": {gold:45, potions:1, note:"a rotted strongbox"},
   "2:13,1":{gold:150,potions:2, note:"a cultist's tithe chest"},
   "2:3,6": {gold:40, charm:true, note:"a warded reliquary"},
