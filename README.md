@@ -33,7 +33,8 @@ Source is strict-mode TypeScript in `src/`:
 | `src/state.ts` | Runtime state, versioned saves, map queries |
 | `src/biomes.ts` | Biome structs: textures, ambient light, prop placement per level |
 | `src/props.ts` | Prop registry: draw + light + glow definitions (torches, vents…) |
-| `src/render.ts` | First-person renderer: albedo/lightmap/emissive passes, automap |
+| `src/scene3d.ts` | WebGL world (three.js): geometry, lights, bloom, gliding camera |
+| `src/render.ts` | 2D subsystems: automap, title scene, monster art |
 | `src/audio.ts` | Procedural WebAudio sfx and ambient scene music |
 | `src/net.ts` | PeerJS link (host/join, message framing) |
 | `src/ui.ts` | Router, party plaques, shared combat widgets |

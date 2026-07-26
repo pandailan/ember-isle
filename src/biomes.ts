@@ -211,3 +211,50 @@ export function biomeTextures(biome: Biome): HTMLCanvasElement[] {
   }
   return texCache[biome.id];
 }
+
+/* Normal maps derived from albedo luminance (sobel over a height guess), so
+   point lights rake across the stone relief. */
+const normalCache: Record<string, HTMLCanvasElement[]> = {};
+
+export function bakeNormalMap(albedo: HTMLCanvasElement, strength = 2.2): HTMLCanvasElement {
+  const w = albedo.width, h = albedo.height;
+  const src = albedo.getContext("2d")!.getImageData(0, 0, w, h).data;
+  const lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) lum[i] = (src[i * 4] * 0.4 + src[i * 4 + 1] * 0.4 + src[i * 4 + 2] * 0.2) / 255;
+  const out = document.createElement("canvas"); out.width = w; out.height = h;
+  const octx = out.getContext("2d")!;
+  const img = octx.createImageData(w, h);
+  const at = (x: number, y: number) => lum[((y + h) % h) * w + ((x + w) % w)];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (at(x + 1, y) - at(x - 1, y)) * strength;
+    const dy = (at(x, y + 1) - at(x, y - 1)) * strength;
+    const inv = 1 / Math.sqrt(dx * dx + dy * dy + 1);
+    const i = (y * w + x) * 4;
+    img.data[i] = (-dx * inv * 0.5 + 0.5) * 255;
+    img.data[i + 1] = (dy * inv * 0.5 + 0.5) * 255;
+    img.data[i + 2] = inv * 255;
+    img.data[i + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
+}
+
+export function biomeNormalMaps(biome: Biome): HTMLCanvasElement[] {
+  if (!normalCache[biome.id]) {
+    normalCache[biome.id] = biomeTextures(biome).map(t => bakeNormalMap(t));
+  }
+  return normalCache[biome.id];
+}
+
+/** A tiling floor texture per biome (flagstones / cobbles / scorched basalt). */
+const floorCache: Record<string, HTMLCanvasElement> = {};
+export function biomeFloorTexture(biome: Biome): HTMLCanvasElement {
+  if (!floorCache[biome.id]) {
+    const spec: WallTexSpec = {...biome.tex, style: "stone",
+      base: biome.id === "harbor" ? [64, 66, 76] : biome.tex.base.map(v => Math.round(v * 0.72)) as [number, number, number],
+      blockW: [24, 44], blockH: [24, 44], crackDensity: biome.tex.crackDensity + 1, variants: 1,
+      mossColor: undefined, veinColor: biome.tex.veinColor};
+    floorCache[biome.id] = bakeTexture(spec, 0);
+  }
+  return floorCache[biome.id];
+}

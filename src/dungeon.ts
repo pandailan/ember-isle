@@ -10,6 +10,8 @@ import { view, amap, renderView } from "./render";
 import { net } from "./net";
 import { setScene, sfx } from "./audio";
 
+const dungeonScene = () => (state.level >= 2 ? "deep" as const : "dungeon" as const);
+
 let logLines: string[] = [];
 let engagedMob: Mob | null = null;
 
@@ -38,7 +40,7 @@ export function enterDungeon(fresh: boolean): void {
     return;
   }
   state.inDungeon = true;
-  setScene("dungeon");
+  setScene(dungeonScene());
   if (fresh) {
     state.level = 1; state.x = 1; state.y = 1; state.dir = 1; state.graceLeft = ENC_GRACE;
     // the caves refill while you're topside
@@ -123,10 +125,6 @@ export function step(back: boolean, byGuest = false): void {
   if (mob) { engage(mob); return; } // you charge them where they stand
   state.x = nx; state.y = ny; state.steps++; markVisited();
   sfx("step");
-  if (!reduceMotion) {
-    const vw = view.parentElement!;
-    vw.classList.remove("step"); void vw.offsetWidth; vw.classList.add("step");
-  }
   const raw = MAPS[state.level][ny][nx];
   renderView();
   void onEnterCell(raw);
@@ -165,11 +163,13 @@ async function onEnterCell(raw: string): Promise<void> {
   }
   if (raw === "S") {
     state.level = 2; state.x = 1; state.y = 1; state.dir = 2; state.graceLeft = ENC_GRACE;
-    markVisited(); sfx("stairs"); dlog("The stair corkscrews down. The heat rises to meet you."); save(); renderView(); return;
+    markVisited(); sfx("stairs"); setScene(dungeonScene());
+    dlog("The stair corkscrews down. The heat rises to meet you."); save(); renderView(); return;
   }
   if (raw === "U") {
     state.level = 1; state.x = 13; state.y = 9; state.dir = 3; state.graceLeft = ENC_GRACE;
-    markVisited(); sfx("stairs"); dlog("You climb back toward cooler air."); save(); renderView(); return;
+    markVisited(); sfx("stairs"); setScene(dungeonScene());
+    dlog("You climb back toward cooler air."); save(); renderView(); return;
   }
   if (raw === "E") {
     dlog("Daylight."); await sleep(300);
@@ -251,7 +251,7 @@ export function bindDungeonControls(): void {
 }
 
 export function backToDungeon(msg: string | null): void {
-  setScene("dungeon");
+  setScene(dungeonScene());
   show("scr-dungeon");
   renderPlaques("dg-plaques");
   updateHUD();

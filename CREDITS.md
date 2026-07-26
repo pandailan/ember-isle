@@ -1,16 +1,23 @@
 # Credits & Asset Attribution
 
-## Current build: 100% procedural
+## Current build: procedural assets, open-source engine
 
-Every visual and sound in Ember Isle is currently **generated in code** — no
-external asset files are shipped:
+Every visual and sound in Ember Isle is **generated in code** — no external
+asset files are shipped. The renderer is built on an open-source library:
 
-- **Dungeon renderer, monster art, title scene** — drawn at runtime on canvas
-  (`src/render.ts`); monster portraits are vector-drawn shapes, walls are
-  procedural stone with per-face lighting, particles and light shafts are
-  computed each frame.
+| Component | Source | License | Link |
+| --- | --- | --- | --- |
+| three.js (WebGL engine) | mrdoob & contributors | MIT | https://threejs.org |
+
+Everything drawn *with* it is still procedural:
+
+- **World geometry & materials** — the 3D scene (`src/scene3d.ts`) is built
+  from map data at runtime; wall albedo and normal maps are baked in code
+  (`src/biomes.ts`), monsters are vector-drawn canvas sprites, flames and
+  embers are generated glow textures.
 - **Music & sound effects** — synthesized at runtime with WebAudio
-  (`src/audio.ts`); no samples.
+  (`src/audio.ts`): generated-impulse reverb, per-biome generative scores,
+  no samples.
 
 This keeps the game a single self-contained HTML file. Original code and art
 direction: built with Claude Code for this project.

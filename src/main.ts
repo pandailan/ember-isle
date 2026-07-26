@@ -10,7 +10,7 @@ import {
   bindDungeonControls, rescueParty, combatWon, combatFled, dlog,
 } from "./dungeon";
 import { startCombat, combatSnapshot, adoptCombat } from "./combat";
-import { startRenderLoop, renderTitle } from "./render";
+import { startRenderLoop, renderTitle, bootRenderer } from "./render";
 import { initCoop } from "./coop";
 import { openTradePost, bindTrade } from "./trade";
 import { unlock, toggleMute, isMuted, setScene } from "./audio";
@@ -79,6 +79,7 @@ function bindAudio(): void {
 }
 
 /* ============================== BOOT ============================== */
+bootRenderer();
 initTitle();
 bindTownScreens();
 bindTavern();
