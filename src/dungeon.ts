@@ -4,7 +4,7 @@ import { app } from "./bus";
 import { show, renderPlaques } from "./ui";
 import { $, sleep, rnd, ri, reduceMotion } from "./util";
 import { MAPS, CHESTS, ENEMIES, ENC_GRACE, DIRV, TOWN_SOLID, ITEMS, RELICS, EVENTS, AGGRO, AGGRO_DEF, AGGRO_COOL } from "./data";
-import { groundLevelAt, hasElevation, landmarkAt, landmarkHash } from "./terrain";
+import { groundLevelAt, hasElevation, landmarkAt, cellHash } from "./terrain";
 import { vaultLoot, leaveVault, openBinder } from "./binder";
 import { makeTCard } from "./cards";
 import { findCarrier } from "./items";
@@ -299,7 +299,7 @@ function visitLandmark(): void {
   const claimed = (state.landmarks ??= []);
   if (claimed.includes(key)) return;
   claimed.push(key);
-  const h = landmarkHash(state.x, state.y);
+  const h = cellHash(state.x, state.y);
   if (lm === "watchtower") {
     // the crown shows the land: a wide sweep of the map opens
     const m = MAPS[state.level];

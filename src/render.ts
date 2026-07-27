@@ -31,10 +31,23 @@ export function bootRenderer(): void {
     webgl = m.initScene(view);
     document.getElementById("gl-loading")?.classList.add("done");
     if (!webgl) glFallback("This device does not support WebGL.");
+    else watchViewSize();
   }).catch(() => {
     document.getElementById("gl-loading")?.classList.add("done");
     glFallback("The world failed to load — check the connection and reload.");
   });
+}
+
+/** The view fills whatever space the layout gives it; follow that size. */
+function watchViewSize(): void {
+  const wrap = view.parentElement;
+  if (!wrap) return;
+  const apply = () => {
+    const r = wrap.getBoundingClientRect();
+    if (r.width > 1 && r.height > 1) s3d?.setViewSize(Math.round(r.width), Math.round(r.height));
+  };
+  new ResizeObserver(apply).observe(wrap);
+  apply();
 }
 
 function glFallback(msg: string): void {
@@ -108,6 +121,8 @@ export function combatPop(idx: number, text: string, cls: string): void {
 export function foeAtX(frac: number): number | null {
   return s3d?.foeIndexAtX(frac) ?? null;
 }
+/** An enemy's turn to strike: its rig lunges at the party. */
+export function foeLungeView(idx: number): void { s3d?.foeLunge(idx); }
 
 /* ---------- monster art (portraits + world sprites) ---------- */
 const spriteCache: Record<string, HTMLCanvasElement> = {};

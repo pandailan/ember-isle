@@ -19,6 +19,7 @@ export interface PropPlacement {
   mod: number;       // placed where cellHash % mod === rem
   rem: number;
   offPath?: boolean; // never on the corridor center line
+  cover?: boolean;   // low ground cover: may share a cell with a standing prop
 }
 
 export interface Biome {
@@ -60,8 +61,8 @@ export const BIOMES: Record<string, Biome> = {
       {id: "sacks", mod: 11, rem: 1, offPath: true},
       {id: "crate", mod: 9, rem: 3, offPath: true},
       {id: "puddle", mod: 6, rem: 0},
-      {id: "tuft", mod: 4, rem: 1},
-      {id: "pebbles", mod: 5, rem: 2},
+      {id: "tuft", mod: 4, rem: 1, cover: true},
+      {id: "pebbles", mod: 5, rem: 2, cover: true},
     ],
   },
   caves: {
@@ -142,9 +143,9 @@ export const BIOMES: Record<string, Biome> = {
       {id: "boulderCluster", mod: 15, rem: 8, offPath: true},
       {id: "reeds", mod: 5, rem: 2},
       {id: "puddle", mod: 8, rem: 3},
-      {id: "heather", mod: 3, rem: 0},
-      {id: "tuft", mod: 2, rem: 1},
-      {id: "pebbles", mod: 3, rem: 2},
+      {id: "heather", mod: 3, rem: 0, cover: true},
+      {id: "tuft", mod: 2, rem: 1, cover: true},
+      {id: "pebbles", mod: 3, rem: 2, cover: true},
     ],
   },
   cove: {
@@ -173,8 +174,8 @@ export const BIOMES: Record<string, Biome> = {
       {id: "boulderCluster", mod: 17, rem: 6, offPath: true},
       {id: "reeds", mod: 6, rem: 1},
       {id: "puddle", mod: 8, rem: 0},
-      {id: "tuft", mod: 2, rem: 0},
-      {id: "pebbles", mod: 3, rem: 1},
+      {id: "tuft", mod: 2, rem: 0, cover: true},
+      {id: "pebbles", mod: 3, rem: 1, cover: true},
     ],
   },
 };

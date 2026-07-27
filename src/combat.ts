@@ -10,7 +10,7 @@ import {
 } from "./traits";
 import { app } from "./bus";
 import { show, renderPlaques, redrawCombatLog } from "./ui";
-import { combatView, combatPop } from "./render";
+import { combatView, combatPop, foeLungeView } from "./render";
 import { $, sleep, rnd, ri } from "./util";
 import { askRemote, isRemoteSeat, clearRemoteMenu } from "./coop";
 import { setScene, sfx } from "./audio";
@@ -361,6 +361,7 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
   const t = targets[ri(targets.length)];
   if (e.boss && combat.round % 3 === 0) {
     sfx("spell");
+    foeLungeView(enemyIdx(e));
     clog(`${e.n} draws breath — FLAME sweeps the chamber!`);
     for (const m of alive()) {
       const before = m.hp;
@@ -376,6 +377,7 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
     const before = t.hp;
     hurtMember(t, raw, true);
     pop("p", memberIdx(t), `-${before - t.hp}`, "spell");
+    foeLungeView(enemyIdx(e));
     clog(`${e.n} hurls emberfire at ${t.name}.`);
     if (t.down) clog(`${t.name} falls!`);
     await sleep(PACE); return;
@@ -385,6 +387,7 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
     pop("p", memberIdx(t), "miss", "miss");
     await sleep(PACE); return;
   }
+  foeLungeView(enemyIdx(e));
   sfx("hit");
   const effDef = e.pierce ? Math.floor(defOf(t) / 2) : defOf(t);
   const [raw] = physDmg(slopeAtk(e.atk, false), effDef, 0.08);

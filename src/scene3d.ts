@@ -14,12 +14,13 @@ import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome
 import { ASSETS, FEATURE_ASSET, bindAssetFx } from "./assets3d";
 import { net } from "./net";
 import { reduceMotion, rnd } from "./util";
-import { groundLevelAt, hasElevation } from "./terrain";
+import { groundLevelAt, hasElevation, cellHash } from "./terrain";
+import { makeMonster, MonsterRig } from "./monsters3d";
 import { hourOf } from "./daytime";
 import { sfx } from "./audio";
 
 /* ---------- deterministic per-cell hash (matches the old renderer) ---------- */
-const cellHash = (x: number, y: number) => ((x * 7349 + y * 9151 + x * y * 41) >>> 0);
+
 
 const groundHAt = (wx: number, wz: number): number => groundLevelAt(state.level, wx, wz);
 
@@ -49,20 +50,41 @@ let consumables: Consumable[] = [];
 let fireGroup: {lit: THREE.Object3D; cold: THREE.Object3D} | null = null;
 let flameSprites: {sprite: THREE.Sprite; base: number; phase: number}[] = [];
 
-/* mob sprite pool */
-interface MobView { sprite: THREE.Sprite; shadow: THREE.Mesh; cur: THREE.Vector3; key: string; }
+/* mob rig pool */
+interface MobView { rig: MonsterRig | null; shadow: THREE.Mesh; cur: THREE.Vector3; key: string; phase: number; }
 let mobViews: MobView[] = [];
 
 /* ---------- in-world combat: foes square up in the corridor ---------- */
 interface FoeView { key: string; hp: number; maxhp: number; boss?: boolean; }
 interface FoeSprite {
-  sp: THREE.Sprite; bar: THREE.Sprite; barCv: HTMLCanvasElement; barTex: THREE.CanvasTexture;
-  lastHp: number; flash: number; key: string;
+  rig: MonsterRig; bar: THREE.Sprite; barCv: HTMLCanvasElement; barTex: THREE.CanvasTexture;
+  lastHp: number; flash: number; key: string; deathK: number; lunge: number; phase: number;
 }
 let combatFoes: FoeView[] | null = null;
 let foeSprites: FoeSprite[] = [];
 let pops3d: {sp: THREE.Sprite; t: number}[] = [];
+let slashes: {sp: THREE.Sprite; t: number}[] = [];
+let slashTex: THREE.CanvasTexture | null = null;
+function spawnSlash(x: number, y: number, z: number): void {
+  if (!slashTex) {
+    const cv = document.createElement("canvas"); cv.width = 64; cv.height = 64;
+    const c = cv.getContext("2d")!;
+    c.strokeStyle = "rgba(255,240,210,.95)"; c.lineWidth = 5; c.lineCap = "round";
+    c.beginPath(); c.arc(32, 40, 24, -2.4, -0.7); c.stroke();
+    c.strokeStyle = "rgba(255,200,120,.5)"; c.lineWidth = 9;
+    c.beginPath(); c.arc(32, 42, 24, -2.3, -0.8); c.stroke();
+    slashTex = new THREE.CanvasTexture(cv); slashTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: slashTex, transparent: true, depthWrite: false}));
+  sp.position.set(x, y, z);
+  sp.material.rotation = (rnd() - 0.5) * 1.8;
+  sp.scale.setScalar(0.3);
+  scene.add(sp);
+  slashes.push({sp, t: 0});
+}
 
+const _up35 = new THREE.Vector3(0, 0.35, 0);
+const _v3 = new THREE.Vector3();
 /** Which living foe a viewport point (0..1 across) points at, if any. */
 export function foeIndexAtX(frac: number): number | null {
   if (!camera || !foeSprites.length) return null;
@@ -70,7 +92,7 @@ export function foeIndexAtX(frac: number): number | null {
   let best: number | null = null, bd = 0.3;
   for (let i = 0; i < foeSprites.length; i++) {
     if (combatFoes?.[i] && combatFoes[i].hp <= 0) continue;
-    v.copy(foeSprites[i].sp.position).project(camera);
+    v.copy(foeSprites[i].rig.group.position).add(_up35).project(camera);
     const d = Math.abs((v.x + 1) / 2 - frac);
     if (d < bd) { bd = d; best = i; }
   }
@@ -80,7 +102,7 @@ export function foeIndexAtX(frac: number): number | null {
 export function showCombat(foes: FoeView[] | null): void {
   combatFoes = foes;
   if (!foes) {
-    for (const f of foeSprites) { scene.remove(f.sp); scene.remove(f.bar); }
+    for (const f of foeSprites) { scene.remove(f.rig.group); scene.remove(f.bar); }
     foeSprites = [];
     for (const p of pops3d) scene.remove(p.sp);
     pops3d = [];
@@ -98,12 +120,20 @@ export function combatPop(idx: number, text: string, cls: string): void {
   c.fillStyle = POP_HUES[cls] ?? POP_HUES[""]; c.fillText(text, 64, 24);
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: t, transparent: true, depthWrite: false}));
-  sp.position.copy(anchor.sp.position).add(new THREE.Vector3((rnd() - 0.5) * 0.14, 0.26, 0));
+  sp.position.copy(anchor.rig.group.position).add(new THREE.Vector3((rnd() - 0.5) * 0.14, 0.62, 0));
   sp.scale.set(0.42, 0.16, 1);
   scene.add(sp);
   pops3d.push({sp, t: 0});
   anchor.flash = 1; // the blow lands visibly
+  if (cls === "crit") punchV = 1; // a telling blow rocks the camera
 }
+
+/** An enemy winds up and strikes: its rig lunges at the party. */
+export function foeLunge(idx: number): void {
+  const f = foeSprites[idx];
+  if (f) f.lunge = 1;
+}
+let punchV = 0;
 
 function drawFoeBar(f: FoeSprite, hp: number, maxhp: number): void {
   const c = f.barCv.getContext("2d")!;
@@ -366,6 +396,19 @@ function labelSprite(text: string): THREE.Sprite {
 }
 
 /* ---------- init ---------- */
+/** Fit the render to the container: the view is no longer locked to 4:3.
+    Buffer width is capped so retina iPads don't quadruple the bloom cost. */
+export function setViewSize(w: number, h: number): void {
+  if (!renderer || !composer || w < 2 || h < 2) return;
+  const r = Math.min(window.devicePixelRatio || 1, 2, 1366 / w);
+  renderer.setPixelRatio(r);
+  renderer.setSize(w, h, false);
+  composer.setPixelRatio(r);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
 export function initScene(canvas: HTMLCanvasElement): boolean {
   try {
     renderer = new THREE.WebGLRenderer({canvas, antialias: true});
@@ -375,6 +418,8 @@ export function initScene(canvas: HTMLCanvasElement): boolean {
   // filmic rolloff: near-field hot spots compress instead of clipping to a blob
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.25;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(66, 480 / 360, 0.05, 60);
   camera.rotation.order = "YXZ";
@@ -419,16 +464,27 @@ const GradeShader = {
   uniforms: {
     tDiffuse: {value: null as THREE.Texture | null},
     uTime: {value: 0}, uNight: {value: 0}, uDusk: {value: 0},
+    uSun: {value: new THREE.Vector2(0.5, 0.5)}, uRay: {value: 0},
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
-    uniform float uTime, uNight, uDusk;
+    uniform float uTime, uNight, uDusk, uRay;
+    uniform vec2 uSun;
     varying vec2 vUv;
     void main() {
       vec3 c = texture2D(tDiffuse, vUv).rgb;
+      if (uRay > 0.002) { // low light streams from where the sun sits
+        vec2 dir = uSun - vUv;
+        vec3 acc = vec3(0.0);
+        for (int i = 1; i <= 8; i++) {
+          vec3 s = texture2D(tDiffuse, vUv + dir * (float(i) / 8.0) * 0.6).rgb;
+          acc += s * max(0.0, dot(s, vec3(0.299, 0.587, 0.114)) - 0.5);
+        }
+        c += acc * (0.125 * uRay) * vec3(1.0, 0.82, 0.55);
+      }
       c *= mix(1.07, 1.0, uNight);                                   // daylight breathes
       c = mix(c, c * c * (3.0 - 2.0 * c), 0.16);                    // gentle S-curve
       float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -477,6 +533,90 @@ function faceToOpen(map: string[], x: number, y: number): [number, number] | nul
   return null;
 }
 
+/* a meadow of instanced blades, bent by the wind in the vertex stage */
+let grassMesh: THREE.InstancedMesh | null = null;
+let grassUniforms: {uTime: {value: number}; uWind: {value: number}} | null = null;
+function buildGrass(map: string[], biome: Biome, mw: number, mh: number): void {
+  grassMesh = null; grassUniforms = null;
+  const per = biome.id === "moor" ? 6 : biome.id === "cove" ? 3 : 0;
+  if (!per) return;
+  const spots: {x: number; z: number; s: number; c: number}[] = [];
+  const hues = biome.id === "moor" ? [0x5a7838, 0x6b8a44, 0x4c6830] : [0x84805a, 0x948c64, 0x746e4a];
+  for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
+    if (map[y][x] !== ".") continue;
+    const h = cellHash(x, y);
+    for (let i = 0; i < per; i++) { // small clumps, not lone needles
+      const hx = (h >> (i * 3)) % 97, hz = (h >> (i * 3 + 5)) % 89;
+      const cx2 = x + 0.08 + (hx / 97) * 0.84, cz2 = y + 0.08 + (hz / 89) * 0.84;
+      for (let b = 0; b < 3; b++) {
+        spots.push({x: cx2 + (((h >> (b + i)) % 5) - 2) * 0.016, z: cz2 + (((h >> (b + i + 2)) % 5) - 2) * 0.016,
+          s: 0.6 + ((h >> (b * 2 + i)) % 7) / 7 * 0.7, c: hues[(h >> (b + i * 2)) % hues.length]});
+      }
+    }
+  }
+  if (!spots.length) return;
+  const geo = new THREE.ConeGeometry(0.014, 0.085, 3);
+  geo.translate(0, 0.042, 0);
+  const mat = new THREE.MeshStandardMaterial({roughness: 0.95});
+  const uni = {uTime: {value: 0}, uWind: {value: 1}};
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = uni.uTime; sh.uniforms.uWind = uni.uWind;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uTime; uniform float uWind;")
+      .replace("#include <begin_vertex>",
+        `#include <begin_vertex>
+        float gid = float(gl_InstanceID);
+        transformed.x += sin(uTime * 1.7 + gid * 1.31) * position.y * 0.55 * uWind;
+        transformed.z += cos(uTime * 1.3 + gid * 2.17) * position.y * 0.35 * uWind;`);
+  };
+  const im = new THREE.InstancedMesh(geo, mat, spots.length);
+  const m4 = new THREE.Matrix4(), col = new THREE.Color();
+  for (let i = 0; i < spots.length; i++) {
+    const s = spots[i];
+    m4.makeScale(1, s.s, 1).setPosition(s.x, groundHAt(s.x, s.z), s.z);
+    im.setMatrixAt(i, m4);
+    im.setColorAt(i, col.set(s.c));
+  }
+  im.instanceMatrix.needsUpdate = true;
+  if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  worldGroup.add(im);
+  grassMesh = im; grassUniforms = uni;
+}
+
+/* the sun (and moon) throw real shadows across open ground */
+let sunLight: THREE.DirectionalLight | null = null;
+let seaUniforms: {uT: {value: number}} | null = null;
+/* adaptive quality: weak GPUs shed the expensive passes instead of stalling.
+   tier 2 = everything; 1 = no shadow map; 0 = no god rays either */
+let perfTier = 2;
+let slowAcc = 0;
+const hqLock = typeof location !== "undefined" && location.hash.includes("hq");
+function tunePerf(dt: number): void {
+  if (hqLock) return; // pinned to full quality (screenshots, capable devices)
+  if (dt > 0.22) slowAcc += 1; else slowAcc = Math.max(0, slowAcc - 0.5);
+  if (slowAcc >= 8 && perfTier > 0) {
+    perfTier--;
+    slowAcc = 0;
+    if (renderer && perfTier <= 1) renderer.shadowMap.enabled = false;
+    if (sunLight && perfTier <= 1) sunLight.castShadow = false;
+  }
+}
+function buildSunLight(town: boolean, mw: number, mh: number): void {
+  sunLight = null;
+  if (!town) return;
+  const dl = new THREE.DirectionalLight(0xfff2dc, 0);
+  dl.castShadow = perfTier >= 2;
+  dl.shadow.mapSize.set(1024, 1024);
+  const ext = Math.max(mw, mh) * 0.72;
+  dl.shadow.camera.left = -ext; dl.shadow.camera.right = ext;
+  dl.shadow.camera.top = ext; dl.shadow.camera.bottom = -ext;
+  dl.shadow.camera.near = 1; dl.shadow.camera.far = 70;
+  dl.shadow.bias = -0.0006; dl.shadow.normalBias = 0.02;
+  dl.target.position.set(mw / 2, 0, mh / 2);
+  worldGroup.add(dl); worldGroup.add(dl.target);
+  sunLight = dl;
+}
+
 export function buildLevel(): void {
   const level = state.level;
   const biome = biomeFor(level);
@@ -494,7 +634,7 @@ export function buildLevel(): void {
   starsMat = null; moonSpr = null; sunSpr = null; dimmables = []; swayers = []; shimmers = [];
   cloudMesh = null; cloudMat = null; gulls = [];
   lhBeacon = null; lhBeamMat = null; lhLampMat = null; lhGlow = null;
-  for (const mv of mobViews) { scene.remove(mv.sprite); scene.remove(mv.shadow); }
+  for (const mv of mobViews) { if (mv.rig) scene.remove(mv.rig.group); scene.remove(mv.shadow); }
   mobViews = [];
 
   // atmosphere
@@ -541,7 +681,19 @@ export function buildLevel(): void {
     worldGroup.add(new THREE.Mesh(flat, new THREE.MeshStandardMaterial({map: ftex, roughness: 0.95})));
   }
   if (town) { // it is an isle: open sea runs to the horizon under every sky
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), getWaterMats()[1]);
+    const seaMat = getWaterMats()[1].clone() as THREE.MeshStandardMaterial;
+    const su = {uT: {value: 0}};
+    seaMat.onBeforeCompile = sh => {
+      sh.uniforms.uT = su.uT;
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform float uT;")
+        .replace("#include <begin_vertex>",
+          `#include <begin_vertex>
+          transformed.z += sin(uT * 0.9 + position.x * 0.55) * 0.045
+                         + sin(uT * 1.4 + position.y * 0.8 + position.x * 0.3) * 0.03;`);
+    };
+    seaUniforms = su;
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(90, 90, 72, 72), seaMat);
     sea.rotation.x = -Math.PI / 2;
     sea.position.set(mw / 2, -0.05, mh / 2);
     worldGroup.add(sea);
@@ -691,12 +843,16 @@ export function buildLevel(): void {
     if (ch === "#" || (town && TOWN_DOORS.includes(ch))) continue;
     const h = cellHash(x, y);
     if (ch === ".") {
+      let placedMain = false, placedCover = false;
       for (const place of biome.floorProps) {
+        const isCover = !!place.cover;
+        if (isCover ? placedCover : placedMain) continue;
         if (h % place.mod !== place.rem) continue;
         const pg2 = new THREE.Group(); pg2.position.y = groundHAt(x + 0.5, y + 0.5);
         worldGroup.add(pg2);
-        ASSETS[place.id]?.({group: pg2, x, z: y, hash: h, biome});
-        break;
+        ASSETS[place.id]?.({group: pg2, x, z: y, hash: isCover ? (h >>> 1) : h, biome});
+        if (isCover) placedCover = true; else placedMain = true;
+        if (placedMain && placedCover) break;
       }
       continue;
     }
@@ -720,6 +876,15 @@ export function buildLevel(): void {
     }));
     worldGroup.add(emberPoints);
   } else { emberPoints = null; emberData = null; }
+
+  if (town) buildGrass(map, biome, mw, mh);
+  buildSunLight(town, mw, mh);
+  // everything solid casts and catches the sun; effects opt back out
+  worldGroup.traverse(o => {
+    if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; }
+  });
+  if (grassMesh) grassMesh.castShadow = false;
+  if (cloudMesh) { cloudMesh.castShadow = false; cloudMesh.receiveShadow = false; }
 
   builtLevel = level;
   // snap the camera on arrival in a new place
@@ -806,6 +971,7 @@ function updateSky(dt: number, biome: Biome): void {
   else if (w === "rain") { fogD *= 1.7; stars *= 0.15; sun *= 0.35; ambI *= 0.8; _sky.multiplyScalar(0.72); _fogC.multiplyScalar(0.78); }
   else if (w === "storm") { fogD *= 2.0; stars = 0; sun *= 0.12; ambI *= 0.62; _sky.multiplyScalar(0.5); _fogC.multiplyScalar(0.55); }
   if (biome.id === "moor") { _sky.multiply(MOOR_TINT); _fogC.multiply(MOOR_TINT); }
+  if (sunLight) { ambI *= 1 - 0.32 * sun; hemiI *= 1 - 0.28 * sun; }
   // storm flashes: the world blinks white, thunder follows
   if (w === "storm" && !reduceMotion) {
     if (animT > nextFlash) {
@@ -829,6 +995,17 @@ function updateSky(dt: number, biome: Biome): void {
   sunK = sun;
   // distinct cloud shadows need direct light; overcast weather washes them out
   cloudA = w === "clear" ? 0.16 * sun + 0.06 * stars : w === "mist" ? 0 : 0.04;
+  if (sunLight) { // the sun (or moon) rakes real shadows over the isle
+    const mw2 = MAPS[state.level][0].length / 2, mh2 = MAPS[state.level].length / 2;
+    const moonUp = stars > 0.4 && sun < 0.1;
+    const ta = moonUp ? (h < 12 ? h + 24 : h) : h; // hour drives the azimuth
+    const az = ((ta - 6) / 12) * Math.PI;          // east at dawn, west at dusk
+    const alt = Math.max(0.25, Math.sin(Math.min(Math.PI, Math.max(0, az))));
+    sunLight.position.set(mw2 + Math.cos(az) * 24, 8 + alt * 20, mh2 - 10);
+    sunLight.intensity = w === "clear" || w === "mist"
+      ? sun * 1.7 + (moonUp ? 0.22 : 0) : sun * 0.5;
+    sunLight.color.setHex(moonUp ? 0xaebde0 : sun < 0.5 ? 0xffd9a8 : 0xfff2dc);
+  }
   windK = w === "storm" ? 2 : w === "rain" ? 1.4 : w === "mist" ? 0.7 : 1;
   // lights across the sky
   const mw = MAPS[state.level][0].length, mh = MAPS[state.level].length;
@@ -866,6 +1043,7 @@ const yawFor = (dir: number) => [0, -Math.PI / 2, Math.PI, Math.PI / 2][dir];
 export function frame(dt: number): void {
   if (!renderer || !composer || !state) return;
   animT += dt;
+  tunePerf(dt);
   if (builtLevel !== state.level) buildLevel();
   const biome = biomeFor(state.level);
   if (biome.sky) updateSky(dt, biome); else flashV = 0;
@@ -886,7 +1064,8 @@ export function frame(dt: number): void {
   }
   // subtle breathing bob over the ground height
   camera.position.y = 0.5 + groundHAt(camera.position.x, camera.position.z)
-    + (reduceMotion ? 0 : Math.sin(animT * 1.7) * 0.006);
+    + (reduceMotion ? 0 : Math.sin(animT * 1.7) * 0.006)
+    + punchV * Math.sin(punchV * 31) * 0.014;
   playerLight.position.copy(camera.position).add(new THREE.Vector3(0, 0.06, 0));
   const plBase = biome.sky ? 3.2 * plScale : 13;
   playerLight.intensity = reduceMotion ? plBase
@@ -912,6 +1091,8 @@ export function frame(dt: number): void {
     if (!reduceMotion) f.sprite.scale.setScalar(f.base * (0.85 + 0.2 * Math.sin(animT * 8 + f.phase)));
   }
   for (const dm of dimmables) dm.m.emissiveIntensity = dm.base * (0.1 + 0.9 * lightMul);
+  if (grassUniforms) { grassUniforms.uTime.value = animT; grassUniforms.uWind.value = windK; }
+  if (seaUniforms) seaUniforms.uT.value = animT;
   // the sea drifts
   if (!reduceMotion && waterTexTile && waterTexSea) {
     waterTexTile.offset.x += dt * 0.012; waterTexTile.offset.y += dt * 0.004;
@@ -969,18 +1150,15 @@ export function frame(dt: number): void {
     while (foeSprites.length < combatFoes.length) {
       const i = foeSprites.length;
       const fv = combatFoes[i];
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({transparent: true}));
-      if (spriteSource) {
-        const t = new THREE.CanvasTexture(spriteSource(fv.boss ? "boss" : fv.key));
-        t.colorSpace = THREE.SRGBColorSpace;
-        sp.material.map = t; sp.material.needsUpdate = true;
-      }
+      const rig2 = makeMonster(fv.boss ? "boss" : fv.key);
       const barCv = document.createElement("canvas"); barCv.width = 64; barCv.height = 10;
       const barTex = new THREE.CanvasTexture(barCv);
+      barTex.colorSpace = THREE.SRGBColorSpace;
       const bar = new THREE.Sprite(new THREE.SpriteMaterial({map: barTex, transparent: true, depthWrite: false}));
       bar.scale.set(0.4, 0.062, 1);
-      scene.add(sp); scene.add(bar);
-      const fs: FoeSprite = {sp, bar, barCv, barTex, lastHp: fv.hp, flash: 0, key: fv.key};
+      scene.add(rig2.group); scene.add(bar);
+      const fs: FoeSprite = {rig: rig2, bar, barCv, barTex, lastHp: fv.hp, flash: 0, key: fv.key,
+        deathK: 0, lunge: 0, phase: i * 2.13};
       drawFoeBar(fs, fv.hp, fv.maxhp);
       foeSprites.push(fs);
     }
@@ -989,24 +1167,46 @@ export function frame(dt: number): void {
       const fv = combatFoes[i], fs = foeSprites[i];
       const lateral = n === 1 ? 0 : (i / (n - 1) - 0.5) * Math.min(0.95, 0.42 * n);
       const depth = (i % 2) * 0.28;
-      const base = fv.boss ? 1.0 : 0.62;
-      const pos = centre.clone().add(right.clone().multiplyScalar(lateral)).add(fwd.clone().multiplyScalar(depth));
       const alive2 = fv.hp > 0;
-      const bob = reduceMotion || !alive2 ? 0 : Math.sin(animT * 2.4 + i * 2.2) * 0.02;
+      if (!reduceMotion && fs.lunge > 0) fs.lunge = Math.max(0, fs.lunge - dt * 3.4);
+      const spring = Math.sin(Math.min(1, 1 - fs.lunge) * Math.PI) * 0.42; // out and back
+      const pos = centre.clone().add(right.clone().multiplyScalar(lateral))
+        .add(fwd.clone().multiplyScalar(depth - (fs.lunge > 0 ? spring : 0)));
       const fgh = groundHAt(pos.x, pos.z);
-      fs.sp.position.set(pos.x, fgh + (fv.boss ? 0.52 : 0.36) + bob, pos.z);
-      if (fv.hp < fs.lastHp) fs.flash = 1;
+      const g = fs.rig.group;
+      g.position.set(pos.x, fgh, pos.z);
+      g.rotation.y = Math.atan2(camera.position.x - pos.x, camera.position.z - pos.z);
+      if (fv.hp < fs.lastHp) { fs.flash = 1; spawnSlash(pos.x, fgh + 0.38, pos.z); }
       fs.lastHp = fv.hp;
-      if (!reduceMotion) fs.flash = Math.max(0, fs.flash - dt * 3.2);
-      else fs.flash = 0;
-      fs.sp.scale.setScalar(base * (1 + fs.flash * 0.18));
-      fs.sp.material.color.setRGB(1, 1 - fs.flash * 0.55, 1 - fs.flash * 0.55);
-      fs.sp.material.opacity = alive2 ? 1 : 0.12; // the fallen fade to shade
+      fs.flash = reduceMotion ? 0 : Math.max(0, fs.flash - dt * 3.2);
+      fs.rig.flash(fs.flash);
+      const size = fv.boss ? 1.0 : 0.8;
+      if (alive2) {
+        fs.deathK = 0;
+        fs.rig.tick(animT, fs.phase);
+        g.scale.setScalar(size * (1 + fs.flash * 0.1));
+        fs.rig.fade(1);
+      } else { // the fallen crumple where they stood
+        fs.deathK = Math.min(1, fs.deathK + (reduceMotion ? 1 : dt * 2.4));
+        if (fs.rig.die === "fall") g.rotation.x = -1.35 * fs.deathK;
+        else g.scale.set(size * (1 + 0.3 * fs.deathK), size * (1 - 0.85 * fs.deathK), size * (1 + 0.3 * fs.deathK));
+        fs.rig.fade(1 - 0.75 * fs.deathK);
+      }
       drawFoeBar(fs, fv.hp, fv.maxhp);
-      fs.bar.position.set(pos.x, fgh + (fv.boss ? 1.06 : 0.68), pos.z);
+      fs.bar.position.set(pos.x, fgh + (fv.boss ? 1.24 : 0.66), pos.z);
       fs.bar.visible = alive2;
     }
   }
+  // slash arcs flare and die fast
+  for (let i = slashes.length - 1; i >= 0; i--) {
+    const s = slashes[i];
+    s.t += dt * 5;
+    s.sp.material.opacity = Math.max(0, 1 - s.t);
+    s.sp.scale.setScalar(0.3 + s.t * 0.3);
+    if (s.t >= 1) { scene.remove(s.sp); slashes.splice(i, 1); }
+  }
+  // a telling blow rocks the eye
+  if (punchV > 0) punchV = reduceMotion ? 0 : Math.max(0, punchV - dt * 4.5);
   // floating damage numbers rise and fade
   for (let i = pops3d.length - 1; i >= 0; i--) {
     const p = pops3d[i];
@@ -1018,34 +1218,36 @@ export function frame(dt: number): void {
   // mobs: sprite pool reconciled to state, gliding toward their cells
   const mobs = state.mobs?.[state.level] ?? [];
   while (mobViews.length < mobs.length) {
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({transparent: true}));
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.22, 10),
       new THREE.MeshBasicMaterial({color: 0x000000, transparent: true, opacity: 0.45}));
     shadow.rotation.x = -Math.PI / 2;
-    scene.add(sprite); scene.add(shadow);
-    mobViews.push({sprite, shadow, cur: new THREE.Vector3(), key: ""});
+    scene.add(shadow);
+    mobViews.push({rig: null, shadow, cur: new THREE.Vector3(), key: "", phase: mobViews.length * 1.71});
   }
   for (let i = 0; i < mobViews.length; i++) {
     const mv = mobViews[i], mob = mobs[i];
-    if (!mob || combatFoes) { mv.sprite.visible = false; mv.shadow.visible = false; continue; }
-    if (mv.key !== mob.key && spriteSource) {
-      mv.key = mob.key;
-      const t = new THREE.CanvasTexture(spriteSource(mob.key));
-      t.colorSpace = THREE.SRGBColorSpace;
-      mv.sprite.material.map = t; mv.sprite.material.needsUpdate = true;
+    if (!mob || combatFoes) {
+      if (mv.rig) mv.rig.group.visible = false;
+      mv.shadow.visible = false; continue;
     }
-    const tgt = new THREE.Vector3(mob.x + 0.5, 0.34, mob.y + 0.5);
+    if (mv.key !== mob.key || !mv.rig) {
+      if (mv.rig) scene.remove(mv.rig.group);
+      mv.key = mob.key;
+      mv.rig = makeMonster(mob.key);
+      mv.rig.group.scale.setScalar(0.92);
+      scene.add(mv.rig.group);
+    }
+    const tgt = new THREE.Vector3(mob.x + 0.5, 0, mob.y + 0.5);
     if (mv.cur.lengthSq() === 0 || mv.cur.distanceTo(tgt) > 3) mv.cur.copy(tgt);
     else mv.cur.lerp(tgt, reduceMotion ? 1 : 1 - Math.exp(-dt * 6));
-    const bob = reduceMotion ? 0 : Math.sin(animT * 2.6 + mob.x * 7 + mob.y * 13) * 0.02;
     const mgh = groundHAt(mv.cur.x, mv.cur.z);
-    mv.sprite.position.set(mv.cur.x, mgh + 0.34 + bob, mv.cur.z);
-    mv.sprite.scale.setScalar(0.62);
-    mv.sprite.visible = true;
+    const g = mv.rig.group;
+    g.position.set(mv.cur.x, mgh, mv.cur.z);
+    g.rotation.y = Math.atan2(camera.position.x - mv.cur.x, camera.position.z - mv.cur.z);
+    g.visible = true;
+    if (!reduceMotion) mv.rig.tick(animT, mv.phase);
     mv.shadow.position.set(mv.cur.x, mgh + 0.011, mv.cur.z);
     mv.shadow.visible = true;
-    const hue = ENEMIES[mob.key]?.hue;
-    if (hue) mv.sprite.material.color.set(0xffffff);
   }
   // rising embers / wandering fireflies
   if (emberPoints && emberData) {
@@ -1111,7 +1313,17 @@ export function frame(dt: number): void {
       const up = Math.max(0, Math.min(1, (sunK - 0.03) / 0.15));
       const high = Math.max(0, Math.min(1, (sunK - 0.55) / 0.3));
       grade.uniforms.uDusk.value = up * (1 - high);
-    } else { grade.uniforms.uNight.value = 0.35; grade.uniforms.uDusk.value = 0.15; } // torchlight is its own hour
+      let ray = 0;
+      if (sunSpr) { // golden-hour rays pour from the sun's seat on screen
+        _v3.copy(sunSpr.position).project(camera);
+        const sx = (_v3.x + 1) / 2, sy = (_v3.y + 1) / 2;
+        if (_v3.z < 1 && sx > -0.25 && sx < 1.25 && sy > -0.25 && sy < 1.25) {
+          grade.uniforms.uSun.value.set(sx, sy);
+          ray = grade.uniforms.uDusk.value;
+        }
+      }
+      grade.uniforms.uRay.value = perfTier >= 1 ? ray : 0;
+    } else { grade.uniforms.uNight.value = 0.35; grade.uniforms.uDusk.value = 0.15; grade.uniforms.uRay.value = 0; }
   }
   composer.render();
 }

@@ -99,7 +99,7 @@ class Net {
     this.hbTimer = setInterval(() => {
       if (!this.conn) return;
       try { this.conn.send(JSON.stringify({t: "__ping"})); } catch { /* dropping anyway */ }
-      if (Date.now() - this.lastRecv > 7000) this.dropConn();
+      if (Date.now() - this.lastRecv > 12000) this.dropConn();
     }, 2000);
     if (this.onPeerChange) this.onPeerChange();
   }
