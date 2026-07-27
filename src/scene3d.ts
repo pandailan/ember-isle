@@ -101,6 +101,14 @@ export function foeIndexAtX(frac: number): number | null {
 
 export function showCombat(foes: FoeView[] | null): void {
   combatFoes = foes;
+  if (foes) { // a different fight must not wear the last fight's bodies
+    const stale = foeSprites.length > foes.length ||
+      foeSprites.some((f, i) => foes[i] && f.key !== (foes[i].boss ? "boss" : foes[i].key));
+    if (stale) {
+      for (const f of foeSprites) { scene.remove(f.rig.group); scene.remove(f.bar); }
+      foeSprites = [];
+    }
+  }
   if (!foes) {
     for (const f of foeSprites) { scene.remove(f.rig.group); scene.remove(f.bar); }
     foeSprites = [];
