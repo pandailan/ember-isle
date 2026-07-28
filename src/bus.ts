@@ -14,6 +14,7 @@ export interface AppBus {
   // dungeon inputs relayed from a co-op guest
   turn(d: number): void;
   step(back: boolean, byGuest?: boolean): void;
+  strafe(side: -1 | 1, byGuest?: boolean): void;
   usePotionField(): void;
   /** Walking into a town door/prop cell. */
   townDoor(c: string): void;

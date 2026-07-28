@@ -354,6 +354,7 @@ export function initCoop(): void {
         const a = m.a as string;
         if (a === "left") app.turn(-1); else if (a === "right") app.turn(1);
         else if (a === "fwd") app.step(false, true); else if (a === "back") app.step(true, true);
+        else if (a === "sleft") app.strafe(-1, true); else if (a === "sright") app.strafe(1, true);
         else if (a === "potion") app.usePotionField();
       } else if (m.t === "choice" && remoteResolve) {
         remoteResolve(typeof m.i === "number" ? m.i : -1);

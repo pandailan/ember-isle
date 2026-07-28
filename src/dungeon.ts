@@ -186,9 +186,18 @@ function moveMobs(): void {
 }
 
 export function step(back: boolean, byGuest = false): void {
+  moveDir(back ? ((state.dir + 2) % 4) as Dir : state.dir, byGuest);
+}
+
+/** Sidestep without turning: the crawler's classic strafe. */
+export function strafe(side: -1 | 1, byGuest = false): void {
+  moveDir(((state.dir + (side === 1 ? 1 : 3)) % 4) as Dir, byGuest);
+}
+
+function moveDir(d: Dir, byGuest = false): void {
   if (fightingNow()) return; // no wandering off mid-melee
-  const f = DIRV[state.dir], s = back ? -1 : 1;
-  const nx = state.x + f[0] * s, ny = state.y + f[1] * s;
+  const f = DIRV[d];
+  const nx = state.x + f[0], ny = state.y + f[1];
   const cell = cellAt(state.level, nx, ny);
   if (cell === "~") {
     sfx("bump");
@@ -359,6 +368,10 @@ export function usePotionField(): void {
 }
 
 // Guests steer through the host: inputs travel the link, moves come back as synced state.
+function doStrafe(side: -1 | 1): void {
+  if (net.role === "guest") { net.send({t: "input", a: side < 0 ? "sleft" : "sright"}); return; }
+  strafe(side);
+}
 function doTurn(d: number): void {
   if (net.role === "guest") net.send({t: "input", a: d < 0 ? "left" : "right"});
   else turn(d);
@@ -377,10 +390,28 @@ function doStep(back: boolean): void {
 }
 
 export function bindDungeonControls(): void {
-  $("bt-left").onclick = () => doTurn(-1);
-  $("bt-right").onclick = () => doTurn(1);
-  $("bt-fwd").onclick = () => doStep(false);
-  $("bt-back").onclick = () => doStep(true);
+  // movement buttons act on press and repeat while held; the trailing
+  // synthetic click is swallowed so nothing fires twice
+  const heldMove = (id: string, fn: () => void) => {
+    const el = $(id);
+    let timer = 0, held = false;
+    el.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      held = true; fn();
+      const go = () => { fn(); timer = window.setTimeout(go, 210); };
+      timer = window.setTimeout(go, 380);
+    });
+    for (const ev of ["pointerup", "pointerleave", "pointercancel"] as const) {
+      el.addEventListener(ev, () => { window.clearTimeout(timer); });
+    }
+    el.onclick = () => { if (held) { held = false; return; } fn(); }; // synthetic clicks still work
+  };
+  heldMove("bt-left", () => doTurn(-1));
+  heldMove("bt-right", () => doTurn(1));
+  heldMove("bt-fwd", () => doStep(false));
+  heldMove("bt-back", () => doStep(true));
+  heldMove("bt-sleft", () => doStrafe(-1));
+  heldMove("bt-sright", () => doStrafe(1));
   $("bt-map").onclick = () => { amap.classList.toggle("on"); renderView(); };
   $("bt-cards").onclick = () => { sfx("tap"); openBinder(); };
   $("bt-potion").onclick = () => {
@@ -400,6 +431,8 @@ export function bindDungeonControls(): void {
     else if (e.key === "ArrowDown" || e.key === "s") doStep(true);
     else if (e.key === "ArrowLeft" || e.key === "a") doTurn(-1);
     else if (e.key === "ArrowRight" || e.key === "d") doTurn(1);
+    else if (e.key === "q") doStrafe(-1);
+    else if (e.key === "e") doStrafe(1);
     else if (e.key === "m") $("bt-map").click();
   });
   // swipe on the viewport: flick up walks, down retreats, sideways turns
@@ -411,13 +444,13 @@ export function bindDungeonControls(): void {
     if (performance.now() - tst > 500) return; // a lingering finger is not a flick
     const t = e.changedTouches[0];
     const dx = t.clientX - tsx, dy = t.clientY - tsy;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 26) return;
-    if (fightingNow()) { // flick at a foe: strike them
+    if (fightingNow()) { // in a fight, a flick or a plain tap at a foe strikes them
       const r = view.getBoundingClientRect();
       const i = foeAtX((t.clientX - r.left) / r.width);
       if (i != null) app.combatSwipe(i);
       return;
     }
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 26) return;
     if (Math.abs(dx) > Math.abs(dy)) doTurn(dx > 0 ? 1 : -1); else doStep(dy > 0);
   }, {passive: true});
 }

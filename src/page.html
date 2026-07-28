@@ -151,7 +151,8 @@
       grid-template-rows:auto minmax(0,1fr) auto; gap:10px 12px;}
     #scr-dungeon .viewwrap{grid-column:2; grid-row:1/4; height:100%; min-height:0;}
     #scr-dungeon #log{grid-column:1; grid-row:1;}
-    #scr-dungeon .plaques{grid-column:1; grid-row:2; grid-template-columns:1fr 1fr; align-content:start;}
+    #scr-dungeon .plaques{grid-column:1; grid-row:2; grid-template-columns:repeat(2,minmax(0,1fr));
+      align-content:start; min-width:0; overflow:hidden;}
     #scr-dungeon .compass{grid-column:3; grid-row:1; flex-direction:column; gap:2px; align-items:flex-end;}
     #scr-dungeon #combat-panel{grid-column:3; grid-row:2; min-height:0; overflow-y:auto; align-self:start;}
     #scr-dungeon .controls{display:contents;}
@@ -223,10 +224,12 @@
   /* thumb controls: movement diamond under the left thumb,
      actions fanned in a quarter-circle under the right */
   .controls{display:flex; justify-content:space-between; align-items:flex-end; gap:10px;}
-  .movepad{display:grid; grid-template-areas:"l f r" ". b ."; gap:8px;
+  .movepad{display:grid; grid-template-areas:"l f r" "sl b sr"; gap:8px;
     grid-template-columns:repeat(3,minmax(52px,64px)); grid-template-rows:repeat(2,54px); flex:1; max-width:240px;}
   .movepad button{font-size:1.25rem; padding:6px; border-radius:14px;}
   #bt-fwd{grid-area:f;} #bt-left{grid-area:l;} #bt-right{grid-area:r;} #bt-back{grid-area:b;}
+  #bt-sleft{grid-area:sl;} #bt-sright{grid-area:sr;}
+  #bt-sleft,#bt-sright{font-size:1.05rem; color:var(--parch-dim);}
   .arc{position:relative; width:190px; height:156px; flex:none;}
   .arc button{position:absolute; width:56px; height:56px; border-radius:50%; font-size:.74rem; padding:0;}
   #bt-map   {left:126px; top:0;}
@@ -403,6 +406,8 @@
         <button id="bt-left" aria-label="Turn left">⟲</button>
         <button id="bt-right" aria-label="Turn right">⟳</button>
         <button id="bt-back" aria-label="Step back">▼</button>
+        <button id="bt-sleft" aria-label="Sidestep left">◀</button>
+        <button id="bt-sright" aria-label="Sidestep right">▶</button>
       </div>
       <div class="arc">
         <button id="bt-map">Map</button>

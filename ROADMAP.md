@@ -220,6 +220,14 @@
   foliage floating over the trail; the path-side tree now spreads one
   attached bough over the way instead.
 
+- **Sidestepping & smoother hands** — the crawler's classic strafe arrives:
+  ◀ ▶ on the movement pad, Q/E on a keyboard, and co-op guests strafe
+  through the host link like every other move. Movement buttons now repeat
+  while held, so crossing the moor no longer means drumming a thumb; in
+  combat a plain tap on a foe strikes (the flick still works). And the
+  party plaques stopped bleeding over the 3D view on wide screens — the
+  left column now clips and ellipsizes instead of overflowing.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

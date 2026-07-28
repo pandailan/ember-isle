@@ -6,7 +6,7 @@ import { $ } from "./util";
 import { openTown, townDoorBump, showEnding, bindTownScreens } from "./town";
 import { openDraft, openTavern, openCard, bindTavern } from "./tavern";
 import {
-  enterDungeon, enterWalk, backToDungeon, turn, step, usePotionField,
+  enterDungeon, enterWalk, backToDungeon, turn, step, strafe, usePotionField,
   bindDungeonControls, rescueParty, combatWon, combatFled, dlog,
 } from "./dungeon";
 import { startCombat, combatSnapshot, adoptCombat, combatSwipeStrike } from "./combat";
@@ -26,6 +26,7 @@ app.backToDungeon = backToDungeon;
 app.showEnding = showEnding;
 app.turn = turn;
 app.step = step;
+app.strafe = strafe;
 app.usePotionField = usePotionField;
 app.combatSnapshot = combatSnapshot;
 app.combatSwipe = combatSwipeStrike;
