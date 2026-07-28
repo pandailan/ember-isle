@@ -128,7 +128,7 @@ function engage(mob: Mob): void {
   }
   sfx("combat");
   dlog(`${ENEMIES[mob.key]?.n ?? "Something"} lunges from the dark!`);
-  app.startCombat(mob.group, false);
+  app.startCombat(mob.group, false, mob.elite);
 }
 
 /** After the party moves, packs act on temperament: sighting you lights their
@@ -344,7 +344,7 @@ function visitLandmark(): void {
     if ((h >> 4) % 2 === 0) {
       dlog("Behind you, bone scrapes stone — the sleepers want it back.");
       window.setTimeout(() => { // unless another fight found you first
-        if (!fightingNow()) app.startCombat(["ske", "ske"], false);
+        if (!fightingNow()) app.startCombat(["ske", "ske"], false, (h >> 5) % 3 === 0);
       }, 650);
     }
   } else if (lm === "wreck") {

@@ -127,9 +127,9 @@ export function renderAutomap(): void {
 }
 
 /* ---------- in-world combat view (forwarded to the 3D engine) ---------- */
-export interface FoeView { key: string; hp: number; maxhp: number; boss?: boolean; }
-export function combatView(enemies: {key: string; hp: number; maxhp: number; boss?: boolean}[] | null): void {
-  s3d?.showCombat(enemies ? enemies.map(e => ({key: e.key, hp: e.hp, maxhp: e.maxhp, boss: !!e.boss})) : null);
+export interface FoeView { key: string; hp: number; maxhp: number; boss?: boolean; elite?: boolean; }
+export function combatView(enemies: {key: string; hp: number; maxhp: number; boss?: boolean; elite?: boolean}[] | null): void {
+  s3d?.showCombat(enemies ? enemies.map(e => ({key: e.key, hp: e.hp, maxhp: e.maxhp, boss: !!e.boss, elite: !!e.elite})) : null);
 }
 export function combatPop(idx: number, text: string, cls: string): void {
   s3d?.combatPop(idx, text, cls);

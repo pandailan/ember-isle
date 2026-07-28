@@ -245,6 +245,18 @@
   The compass letters also learned to counter-rotate, staying upright
   while they orbit the card.
 
+- **The curve splits: routs and veterans** — every pack is now weighed
+  against the party at first sight (current hit points and steel on both
+  sides). Outmatched packs offer "⚔ Cut them down": one tap auto-fights the
+  whole battle at double pace, and it bails back to menus if the fight
+  turns. At the other end, named elites now stalk the deeper floors and
+  wilds — Old Greyjaw whose death-howl sends the pack red-eyed, the
+  Gravebound that reassembles once, the Quarry's Heart whose slam takes two
+  at a time — bigger in the world, fatter in stats, and worth it: double
+  gold, a guaranteed potion, and a one-in-three sealed card. A combat
+  generation guard also retires stale fight loops if a new fight ever
+  replaces one mid-flight.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

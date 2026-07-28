@@ -30,7 +30,11 @@ export interface EnemyDef {
   drop?: [string, number];
 }
 
-export interface EnemyInst extends EnemyDef { maxhp: number; key: string; }
+export interface EnemyInst extends EnemyDef {
+  maxhp: number; key: string;
+  /** A named veteran: fatter stats, a signature habit, better spoils. */
+  elite?: boolean; sig?: "howl" | "rebuild" | "quake"; rebuilt?: boolean;
+}
 
 /** A character card — the unit of collection, party play, and (later) trading. */
 export interface Member {
@@ -58,7 +62,7 @@ export interface ChestLoot { gold?: number; potions?: number; charm?: boolean; n
 /** A monster pack living on the map — visible in the corridor, chases the party.
     heat: steps of pursuit left once it has your scent; cool: steps of sulking
     after it gives up, during which it will not re-aggro. */
-export interface Mob { x: number; y: number; key: string; group: string[]; heat?: number; cool?: number; }
+export interface Mob { x: number; y: number; key: string; group: string[]; heat?: number; cool?: number; elite?: boolean; }
 
 export type Weather = "clear" | "mist" | "rain" | "storm";
 
@@ -101,6 +105,10 @@ export interface GameState {
 export interface CombatState {
   enemies: EnemyInst[]; isBoss: boolean;
   log: string[]; round: number; fled: boolean;
+  /** How this pack measures against the party, fixed at first sight. */
+  threat?: "trivial" | "even" | "deadly";
+  /** Rout: auto-attacks at double pace until the fight ends or turns. */
+  rout?: boolean;
 }
 
 export interface PlayerCmd {

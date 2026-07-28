@@ -55,7 +55,7 @@ interface MobView { rig: MonsterRig | null; shadow: THREE.Mesh; cur: THREE.Vecto
 let mobViews: MobView[] = [];
 
 /* ---------- in-world combat: foes square up in the corridor ---------- */
-interface FoeView { key: string; hp: number; maxhp: number; boss?: boolean; }
+interface FoeView { key: string; hp: number; maxhp: number; boss?: boolean; elite?: boolean; }
 interface FoeSprite {
   rig: MonsterRig; bar: THREE.Sprite; barCv: HTMLCanvasElement; barTex: THREE.CanvasTexture;
   lastHp: number; flash: number; key: string; deathK: number; lunge: number; phase: number;
@@ -1274,6 +1274,7 @@ export function frame(dt: number): void {
       const i = foeSprites.length;
       const fv = combatFoes[i];
       const rig2 = makeMonster(fv.boss ? "boss" : fv.key);
+      if (fv.elite && !fv.boss) rig2.group.scale.setScalar(1.16); // veterans loom
       const barCv = document.createElement("canvas"); barCv.width = 64; barCv.height = 10;
       const barTex = new THREE.CanvasTexture(barCv);
       barTex.colorSpace = THREE.SRGBColorSpace;
@@ -1357,7 +1358,7 @@ export function frame(dt: number): void {
       if (mv.rig) scene.remove(mv.rig.group);
       mv.key = mob.key;
       mv.rig = makeMonster(mob.key);
-      mv.rig.group.scale.setScalar(0.92);
+      mv.rig.group.scale.setScalar(mob.elite ? 1.08 : 0.92); // a veteran reads from afar
       scene.add(mv.rig.group);
     }
     const tgt = new THREE.Vector3(mob.x + 0.5, 0, mob.y + 0.5);

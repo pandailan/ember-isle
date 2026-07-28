@@ -1,5 +1,5 @@
 import type { Member, Rarity, GameState, Mob, TCard, AnyCard, CardKind } from "./types";
-import { CLASSES, CLASS_BODY, GROUPS, MAPS, ITEMS, PACKS, RELICS, EVENTS } from "./data";
+import { CLASSES, CLASS_BODY, GROUPS, MAPS, ITEMS, PACKS, RELICS, EVENTS, ELITES, ELITE_CHANCE } from "./data";
 import { TRAITS, hasTrait } from "./traits";
 import { rnd, ri } from "./util";
 
@@ -118,7 +118,8 @@ export function spawnMobs(level: number, existing: Mob[] = []): Mob[] {
     if (Math.abs(x - entry[0]) + Math.abs(y - entry[1]) < 5) continue;
     if (taken.has(x + "," + y)) continue;
     const group = GROUPS[level][ri(GROUPS[level].length)];
-    mobs.push({x, y, key: group[0], group: [...group]});
+    const elite = !!ELITES[group[0]] && rnd() < (ELITE_CHANCE[level] ?? 0.1);
+    mobs.push({x, y, key: group[0], group: [...group], ...(elite ? {elite: true} : {})});
     taken.add(x + "," + y);
   }
   return mobs;

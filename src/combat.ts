@@ -1,5 +1,5 @@
 import type { Member, EnemyInst, CombatState, PlayerCmd } from "./types";
-import { CLASSES, SPELLS, ENEMIES, ENC_GRACE, ITEMS, DIRV } from "./data";
+import { CLASSES, SPELLS, ENEMIES, ENC_GRACE, ITEMS, DIRV, ELITES } from "./data";
 import { groundLevelAt } from "./terrain";
 import { findCarrier } from "./items";
 import { grantBossCard } from "./binder";
@@ -15,9 +15,13 @@ import { $, sleep, rnd, ri } from "./util";
 import { askRemote, isRemoteSeat, clearRemoteMenu } from "./coop";
 import { setScene, sfx } from "./audio";
 import { noteLoot } from "./satchel";
+import { rollPackCard, cardName } from "./cards";
 
 let combat: CombatState = null as unknown as CombatState;
 let fighting = false;
+/** Bumped by every startCombat: a stale runCombat loop (a fight replaced
+    mid-flight) sees the mismatch at its next turn and retires quietly. */
+let combatGen = 0;
 let choiceResolve: ((v: unknown) => void) | null = null;
 const PACE = 440;
 
@@ -107,39 +111,78 @@ async function ask(idx: number, title: string, btns: CmdBtn[]): Promise<unknown>
 let hgtAdv = 0;
 const HGT = 0.082; // slope steep enough to matter — roughly the steepest quarter of moor edges
 
-export function startCombat(groupKeys: string[], isBoss: boolean): void {
+/** How a pack measures against the party right now: current hit points and
+    attack on both sides. Elites and depth show up in the enemy numbers. */
+function threatOf(enemies: EnemyInst[]): "trivial" | "even" | "deadly" {
+  const foePow = enemies.reduce((a, e) => a + e.hp * e.atk, 0);
+  const partyPow = alive().reduce((a, m) => a + m.hp * atkOf(m), 0) || 1;
+  const r = foePow / partyPow;
+  return r < 0.16 ? "trivial" : r > 0.55 ? "deadly" : "even";
+}
+
+const SIG_WARN: Record<string, string> = {
+  howl: "runs with the pack — wolves avenge their own.",
+  rebuild: "has died before. It didn't take.",
+  quake: "drags the ground with every step.",
+};
+
+export function startCombat(groupKeys: string[], isBoss: boolean, elite = false): void {
   const [fx, fy] = DIRV[state.dir];
   hgtAdv = groundLevelAt(state.level, state.x + 0.5, state.y + 0.5)
          - groundLevelAt(state.level, state.x + fx + 0.5, state.y + fy + 0.5);
   combat = {
     enemies: groupKeys.map((k, i) => {
       const d = ENEMIES[k];
+      if (elite && i === 0 && ELITES[k]) { // the leader marches in front
+        const el = ELITES[k];
+        return {...d, n: el.n, hp: Math.round(d.hp * 1.6), maxhp: Math.round(d.hp * 1.6),
+          atk: Math.round(d.atk * 1.3), xp: Math.round(d.xp * 1.8), g: d.g * 2,
+          elite: true, sig: el.sig, key: k} as EnemyInst;
+      }
       const suffix = groupKeys.filter(g => g === k).length > 1
         ? " " + String.fromCharCode(65 + groupKeys.slice(0, i).filter(g => g === k).length) : "";
       return {...d, n: d.n + suffix, hp: d.hp, maxhp: d.hp, key: k} as EnemyInst;
     }),
     isBoss, log: [], round: 0, fled: false,
   };
+  combat.threat = isBoss ? "deadly" : threatOf(combat.enemies);
   setScene("combat"); sfx("combat");
   fighting = true;
   document.body.classList.add("fighting");
   $("combat-panel").hidden = false;
+  const lead = combat.enemies[0];
   $("combat-title").textContent = isBoss ? "Pyrelord Vhal, Keeper of the Ember" :
+    lead.elite ? `${lead.n} bars the way!` :
     combat.enemies.length > 1 ? "Shapes rush from the dark!" : "A shape rushes from the dark!";
   renderFoes(); renderPlaques("dg-plaques");
   $("combat-log").innerHTML = ""; combat.log = [];
-  clog(isBoss ? "“Climbers. The Ember was promised bones.”" : "Steel out — they have your scent.");
+  clog(isBoss ? "“Climbers. The Ember was promised bones.”"
+    : combat.threat === "trivial" ? "They're outmatched — and too hungry to know it."
+    : combat.threat === "deadly" ? "Steel out — this pack means to kill you."
+    : "Steel out — they have your scent.");
+  if (lead.elite && lead.sig) clog(`${lead.n} ${SIG_WARN[lead.sig]}`);
   if (hgtAdv > HGT) clog("You hold the high ground — your blows fall harder.");
   else if (hgtAdv < -HGT) clog("They hold the high ground above you.");
   show("scr-dungeon"); // the fight happens where you stand
-  void runCombat();
+  combatGen++;
+  void runCombat(combatGen);
 }
 
-async function runCombat(): Promise<void> {
+/** Rout runs at double pace; ordinary fights keep the full beat. */
+const pace = () => combat?.rout ? Math.round(PACE / 2) : PACE;
+
+async function runCombat(gen: number): Promise<void> {
   for (;;) {
+    if (gen !== combatGen) return; // a newer fight owns the stage
     combat.round++;
     for (const m of state.party) m.guard = false;
+    if (combat.rout && (threatOf(combat.enemies.filter(e => e.hp > 0)) !== "trivial"
+        || alive().some(m => m.hp / m.maxhp < 0.4))) {
+      combat.rout = false;
+      clog("They fight harder than they looked — you close ranks.");
+    }
     const cmds = await collectCommands();
+    if (gen !== combatGen) return;
     if (combat.fled) break;
     type Act = {side: "p"; spd: number; c: PlayerCmd} | {side: "e"; spd: number; e: EnemyInst};
     const acts: Act[] = [
@@ -147,6 +190,7 @@ async function runCombat(): Promise<void> {
       ...combat.enemies.filter(e => e.hp > 0).map(e => ({side: "e" as const, spd: e.spd + rnd() * 3, e})),
     ].sort((a, b) => b.spd - a.spd);
     for (const a of acts) {
+      if (gen !== combatGen) return;
       if (combat.enemies.every(e => e.hp <= 0)) break;
       if (!alive().length) break;
       if (combat.fled) break;
@@ -166,8 +210,16 @@ async function runCombat(): Promise<void> {
   app.backToDungeon("You run until the torchlight steadies. Nothing follows. Probably.");
 }
 
+/** Everyone still standing swings at the nearest living foe. */
+function routCommands(): PlayerCmd[] {
+  const t = combat.enemies.findIndex(e => e.hp > 0);
+  return alive().map(m => ({m, act: "atk" as const, t: Math.max(0, t)}));
+}
+
 async function collectCommands(): Promise<PlayerCmd[]> {
+  if (combat.rout) return routCommands();
   const cmds: PlayerCmd[] = [];
+  let firstMenu = true;
   for (let idx = 0; idx < state.party.length; idx++) {
     const m = state.party[idx];
     if (m.down) continue;
@@ -175,14 +227,24 @@ async function collectCommands(): Promise<PlayerCmd[]> {
     while (!done) {
       const usable = spellsOf(m).filter(s => m.mp >= spellCost(m, SPELLS[s]));
       menuKind = "root";
-      const c = await ask(idx, `${m.name} — your move (or flick at a foe)`, [
+      const routBtn: CmdBtn[] = combat.threat === "trivial" && firstMenu
+        ? [{t: "⚔ Cut them down", v: {t: "rout"}, wide: true}] : [];
+      const c = await ask(idx, `${m.name} — your move (or flick at a foe)`, routBtn.concat([
         {t: "Attack", v: {t: "atk"}},
         {t: "Spell / Art", v: {t: "sp"}, dis: !usable.length},
         {t: `Potion (${state.potions})`, v: {t: "pot"}, dis: state.potions <= 0},
         {t: "Defend", v: {t: "def"}},
         {t: combat.isBoss ? "Flee (no escape)" : "Flee", v: {t: "flee"}, wide: true, dis: combat.isBoss},
-      ]) as {t: string; i?: number};
+      ])) as {t: string; i?: number};
       menuKind = "other";
+      firstMenu = false;
+      if (c.t === "rout") {
+        combat.rout = true;
+        clog("No quarter — you sweep them aside.");
+        cmdMenu("", []); $("cmd-title").textContent = "…";
+        clearRemoteMenu();
+        return routCommands();
+      }
       if (c.t === "swipe" && c.i != null) {
         cmds.push({m, act: "atk", t: c.i}); done = true;
       } else if (c.t === "atk") {
@@ -261,7 +323,20 @@ function liveEnemy(i: number): EnemyInst | null { // retarget if dead
 }
 function hitEnemy(e: EnemyInst, d: number): void {
   e.hp -= d;
-  if (e.hp <= 0) { e.hp = 0; clog(`${e.n} falls.`); state.kills++; }
+  if (e.hp > 0) return;
+  e.hp = 0;
+  if (e.sig === "rebuild" && !e.rebuilt) { // the Gravebound knits back together, once
+    e.rebuilt = true;
+    e.hp = Math.round(e.maxhp * 0.4);
+    clog(`${e.n} clatters apart — and knits itself back together!`);
+    return;
+  }
+  clog(`${e.n} falls.`); state.kills++;
+  const howler = combat.enemies.find(o => o !== e && o.hp > 0 && o.sig === "howl");
+  if (howler) { // the pack goes red-eyed over its dead
+    for (const o of combat.enemies) if (o.hp > 0) o.atk = Math.round(o.atk * 1.25);
+    clog(`${howler.n} howls — the pack goes red-eyed!`);
+  }
 }
 function hurtMember(t: Member, raw: number, fire = false): void {
   const d = mitigate(t, raw, fire);
@@ -278,7 +353,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
     clog(`${m.name} strikes ${e.n} for ${d}${crit ? " — a telling blow!" : "."}`);
     pop("e", enemyIdx(e), `-${d}`, crit ? "crit" : "");
     hitEnemy(e, d);
-    await sleep(PACE);
+    await sleep(pace());
   } else if (c.act === "cast" && c.s) {
     const def = SPELLS[c.s];
     const cost = spellCost(m, def);
@@ -336,7 +411,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
       clog(`${m.name} ${def.txt} ${t.name} from the dark!`);
       pop("p", c.t!, "risen", "heal");
     }
-    await sleep(PACE);
+    await sleep(pace());
   } else if (c.act === "pot") {
     if (state.potions <= 0) return;
     const t = state.party[c.t!]; if (!t || t.down) return;
@@ -345,7 +420,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
     state.potions--; t.hp = Math.min(t.maxhp, t.hp + heal);
     clog(`${m.name} presses a potion to ${t.name}'s lips. (+${heal})`);
     pop("p", c.t!, `+${heal}`, "heal");
-    await sleep(PACE);
+    await sleep(pace());
   } else if (c.act === "def") {
     m.guard = true; clog(`${m.name} sets a guard.`); await sleep(260);
   } else if (c.act === "flee") {
@@ -353,7 +428,7 @@ async function doPlayerAction(c: PlayerCmd): Promise<void> {
     const ch = 0.55 + (spdOf(m) - avgSpd) * 0.03 + fleeBonus(m);
     if (rnd() < ch) { combat.fled = true; clog("You break for the corridor!"); }
     else clog("No opening — they cut off your retreat!");
-    await sleep(PACE);
+    await sleep(pace());
   }
 }
 
@@ -370,7 +445,7 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
       pop("p", memberIdx(m), `-${before - m.hp}`, "");
       if (m.down) clog(`${m.name} is engulfed and falls!`);
     }
-    await sleep(PACE + 200); return;
+    await sleep(pace() + 200); return;
   }
   if (e.caster && rnd() < 0.35) {
     sfx("spell");
@@ -381,12 +456,26 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
     foeLungeView(enemyIdx(e));
     clog(`${e.n} hurls emberfire at ${t.name}.`);
     if (t.down) clog(`${t.name} falls!`);
-    await sleep(PACE); return;
+    await sleep(pace()); return;
+  }
+  if (e.sig === "quake") { // the slam takes whoever stands nearest the crack
+    sfx("hit");
+    foeLungeView(enemyIdx(e));
+    const picks = [...targets].sort(() => rnd() - 0.5).slice(0, 2);
+    clog(`${e.n} slams the ground — the shock takes ${picks.map(p => p.name).join(" and ")}!`);
+    for (const p of picks) {
+      const [raw] = physDmg(slopeAtk(e.atk, false) * 0.75, defOf(p), 0.05);
+      const before = p.hp;
+      hurtMember(p, raw);
+      pop("p", memberIdx(p), `-${before - p.hp}`, "");
+      if (p.down) clog(`${p.name} falls!`);
+    }
+    await sleep(pace() + 100); return;
   }
   if (hasFlag(t, "dodge") && rnd() < 0.12) {
     clog(`${e.n} lunges — ${t.name} is simply not there.`);
     pop("p", memberIdx(t), "miss", "miss");
-    await sleep(PACE); return;
+    await sleep(pace()); return;
   }
   foeLungeView(enemyIdx(e));
   sfx("hit");
@@ -397,7 +486,7 @@ async function doEnemyAction(e: EnemyInst): Promise<void> {
   pop("p", memberIdx(t), `-${before - t.hp}`, "");
   clog(`${e.n} tears at ${t.name}.`);
   if (t.down) clog(`${t.name} falls!`);
-  await sleep(PACE);
+  await sleep(pace());
 }
 
 async function combatVictory(): Promise<void> {
@@ -444,6 +533,17 @@ async function combatVictory(): Promise<void> {
     else clog(`A ${it.n.toLowerCase()} is left behind — every back is full.`);
   }
   if (rnd() < 0.22 && !combat.isBoss) { state.potions++; clog("Among the remains: a stoppered potion, intact."); noteLoot("potion", "+1 potion · remains"); }
+  if (combat.enemies.some(e => e.elite)) {
+    state.potions++;
+    clog("The veteran's kit yields a stoppered potion and a heavier purse.");
+    noteLoot("potion", "+1 potion · veteran's kit");
+    if (rnd() < 0.35) { // the named ones carry what common beasts never do
+      const card = rollPackCard();
+      state.binder.push(card);
+      clog(`Wrapped in oilcloth at the bottom: a sealed card — ${cardName(card).toUpperCase()}.`);
+      noteLoot("card", `Sealed card: ${cardName(card)}`);
+    }
+  }
   if (combat.isBoss) {
     state.bossDown = true; state.heart = true;
     clog("Vhal's crown gutters out. In the ash lies the HEART OF EMBER, already cooling.");

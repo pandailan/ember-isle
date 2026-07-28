@@ -8,7 +8,7 @@ export interface AppBus {
   openDraft(): void;
   openTrade(): void;
   enterDungeon(fresh: boolean): void;
-  startCombat(groupKeys: string[], isBoss: boolean): void;
+  startCombat(groupKeys: string[], isBoss: boolean, elite?: boolean): void;
   backToDungeon(msg: string | null): void;
   showEnding(): void;
   // dungeon inputs relayed from a co-op guest

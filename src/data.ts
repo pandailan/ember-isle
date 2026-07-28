@@ -74,6 +74,22 @@ export const ENEMIES: Record<string, EnemyDef> = {
   boss:{n:"Pyrelord Vhal",hp:240,atk:17, def:6, spd:7, xp:600,g:500,hue:"#e09a3c", boss:true},
 };
 
+/** Named veterans: an elite carries a title, fatter stats, and one signature
+    habit its species is feared for. Rolled at spawn by ELITE_CHANCE per level. */
+export interface EliteDef { n: string; sig?: "howl" | "rebuild" | "quake"; }
+export const ELITES: Record<string, EliteDef> = {
+  rat: {n: "The Granary King"},
+  sli: {n: "The Old Ooze"},
+  gob: {n: "Snagtooth"},
+  ske: {n: "The Gravebound", sig: "rebuild"},
+  orc: {n: "Skullkeeper Brakk"},
+  wra: {n: "The Pale Warden"},
+  cul: {n: "The Ashen Voice"},
+  gol: {n: "The Quarry's Heart", sig: "quake"},
+  wlf: {n: "Old Greyjaw", sig: "howl"},
+};
+export const ELITE_CHANCE: Record<number, number> = {1: 0.08, 2: 0.2, 3: 0.12, 4: 0.16};
+
 /** Temperament of a pack on the prowl: sight is how far it notices you,
     chase how many steps it keeps hunting before losing heart, slow marks
     lumbering things that fall a step behind. 99 means it never gives up. */
