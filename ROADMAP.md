@@ -228,6 +228,13 @@
   party plaques stopped bleeding over the 3D view on wide screens — the
   left column now clips and ellipsizes instead of overflowing.
 
+- **A real compass** — "Facing East" gave way to a brass-and-parchment
+  compass rose (`src/compass.ts`, a small self-contained class): the card
+  swings so the facing cardinal sits under the fixed needle, always turning
+  the short way around, with the facing kept as an aria-label for screen
+  readers. A dead-class sweep went with it — the stylesheet audit found the
+  CSS otherwise clean (one unused rule removed).
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

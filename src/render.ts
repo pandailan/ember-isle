@@ -2,10 +2,11 @@
    used for both combat portraits and in-world sprites. The first-person view
    itself is rendered by the WebGL engine in scene3d.ts. */
 
-import { MAPS, LEVEL_NAMES, DIRN, ENEMIES } from "./data";
+import { MAPS, LEVEL_NAMES, ENEMIES } from "./data";
 import { phaseName, WEATHER_NAMES } from "./daytime";
 import { state, cellAt, mobAt } from "./state";
 import { $, reduceMotion } from "./util";
+import { CompassRose } from "./compass";
 
 
 export const view = document.getElementById("view") as HTMLCanvasElement;
@@ -18,6 +19,7 @@ const actx = amap.getContext("2d")!;
 actx.scale(DPR, DPR);
 
 const DIRV_A = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+const compass = new CompassRose($("compass-rose"));
 
 let webgl = false;
 let s3d: typeof import("./scene3d") | null = null;
@@ -63,7 +65,7 @@ export function renderView(): void {
   $("pos-label").textContent = (state.level === 0 || state.level === 3 || state.level === 4)
     ? `${LEVEL_NAMES[state.level]} · ${phaseName(state.clock)}${wname}`
     : LEVEL_NAMES[state.level];
-  $("dir-label").textContent = DIRN[state.dir];
+  compass.face(state.dir);
   if (amap.classList.contains("on")) renderAutomap();
 }
 

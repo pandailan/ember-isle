@@ -45,7 +45,6 @@
   input#join-code::placeholder{color:var(--parch-dim); opacity:.5;}
   button:disabled{opacity:.38; pointer-events:none;}
   button.primary{border-color:var(--amber); color:var(--amber);}
-  button.danger{border-color:#6b3020; color:#d98a6a;}
   .btnrow{display:flex; gap:10px; flex-wrap:wrap; justify-content:center;}
   .btncol{display:flex; flex-direction:column; gap:10px;}
   .menu button{text-align:left; display:flex; justify-content:space-between; gap:10px; align-items:baseline;}
@@ -153,7 +152,8 @@
     #scr-dungeon #log{grid-column:1; grid-row:1;}
     #scr-dungeon .plaques{grid-column:1; grid-row:2; grid-template-columns:repeat(2,minmax(0,1fr));
       align-content:start; min-width:0; overflow:hidden;}
-    #scr-dungeon .compass{grid-column:3; grid-row:1; flex-direction:column; gap:2px; align-items:flex-end;}
+    #scr-dungeon .compass{grid-column:3; grid-row:1; flex-direction:column; gap:6px; align-items:flex-end;}
+    #scr-dungeon .rose{width:64px; height:64px;}
     #scr-dungeon #combat-panel{grid-column:3; grid-row:2; min-height:0; overflow-y:auto; align-self:start;}
     #scr-dungeon .controls{display:contents;}
     #scr-dungeon .movepad{grid-column:1; grid-row:3; align-self:end;
@@ -163,6 +163,7 @@
   }
   /* short screens: tighter thumbs so nothing slips below the fold */
   @media (max-height: 720px){
+    .rose{width:36px; height:36px;}
     .movepad{grid-template-rows:repeat(2,44px); gap:6px;}
     .arc{height:118px; width:170px;}
     .arc button{width:48px; height:48px;}
@@ -173,9 +174,13 @@
   #automap{position:absolute; top:8px; right:8px; background:rgba(10,7,5,.88); border:1px solid var(--line);
     border-radius:6px; display:none;}
   #automap.on{display:block;}
-  .compass{display:flex; justify-content:space-between; font-family:var(--mono); font-size:.78rem;
-    color:var(--parch-dim); padding:0 2px;}
-  .compass b{color:var(--amber); font-weight:600;}
+  .compass{display:flex; justify-content:space-between; align-items:center;
+    font-family:var(--mono); font-size:.78rem; color:var(--parch-dim); padding:0 2px;}
+  .rose{width:46px; height:46px; flex:none;}
+  .rose .card{transform-box:view-box; transform-origin:50% 50%;
+    transition:transform .45s cubic-bezier(.22,.9,.3,1);}
+  .rose text{font-family:var(--serif); font-size:12px; font-variant:small-caps;}
+  @media (prefers-reduced-motion: reduce){.rose .card{transition:none;}}
   #log{min-height:3.6em; border:1px solid var(--line-soft); border-radius:6px; background:var(--panel);
     padding:7px 11px; font-size:.88rem; line-height:1.4; color:var(--parch);}
   #log .old{color:var(--parch-dim);}
@@ -389,7 +394,7 @@
       <div id="hud"></div>
       <div id="gl-loading"><span>⚙ kindling the world…</span></div>
     </div>
-    <div class="compass"><span id="pos-label"></span><span>Facing <b id="dir-label">N</b></span></div>
+    <div class="compass"><span id="pos-label"></span><div id="compass-rose"></div></div>
     <div id="log"></div>
     <div class="plaques" id="dg-plaques"></div>
     <div id="combat-panel" hidden>
