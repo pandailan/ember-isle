@@ -162,7 +162,7 @@ function moveMobs(): void {
       else steps.push([0, Math.sign(dy)], [Math.sign(dx), 0]);
       if (lifted && (steps[1][0] || steps[1][1])) { // prefer the gentler of the two paths
         const h = (s: [number, number]) => groundLevelAt(state.level, m.x + s[0] + 0.5, m.y + s[1] + 0.5);
-        if (h(steps[0]) - h(steps[1]) > 0.03) steps.reverse();
+        if (h(steps[0]) - h(steps[1]) > 0.055) steps.reverse();
       }
     } else if (rnd() < 0.2) {
       steps.push(DIRV[ri(4)] as unknown as [number, number]);
@@ -175,7 +175,7 @@ function moveMobs(): void {
       if (occupied.has(tx + "," + ty)) continue;
       if (hunting && lifted && rnd() < 0.4
           && groundLevelAt(state.level, tx + 0.5, ty + 0.5)
-           - groundLevelAt(state.level, m.x + 0.5, m.y + 0.5) > 0.045) break; // scrabbles at the slope
+           - groundLevelAt(state.level, m.x + 0.5, m.y + 0.5) > 0.082) break; // scrabbles at the slope
       occupied.delete(m.x + "," + m.y);
       m.x = tx; m.y = ty;
       occupied.add(tx + "," + ty);

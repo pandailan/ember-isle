@@ -18,7 +18,7 @@ function vnoise(x: number, z: number): number {
   return top + (bot - top) * sz;
 }
 
-const ELEV_AMP: Record<string, number> = {harbor: 0.06, moor: 0.3, cove: 0.22};
+const ELEV_AMP: Record<string, number> = {harbor: 0.06, moor: 0.55, cove: 0.36};
 
 interface Grid { w: number; h: number; c: Float32Array; }
 const grids: Record<number, Grid | null | undefined> = {};
@@ -67,7 +67,7 @@ export function groundLevelAt(level: number, wx: number, wz: number): number {
 export function visionRadius(level: number, x: number, y: number): number {
   if (!hasElevation(level)) return 0;
   const h0 = groundLevelAt(level, x + 0.5, y + 0.5);
-  return h0 > 0.24 ? 3 : h0 > 0.15 ? 2 : 1;
+  return h0 > 0.44 ? 3 : h0 > 0.27 ? 2 : 1;
 }
 
 /* ---------- landmarks as game data ---------- */

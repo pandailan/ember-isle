@@ -104,7 +104,7 @@ async function ask(idx: number, title: string, btns: CmdBtn[]): Promise<unknown>
 /** Height of the party's cell minus the foes' cell — set once per fight.
     Positive: we hold the high ground; negative: they do. */
 let hgtAdv = 0;
-const HGT = 0.045; // slope steep enough to matter — roughly the steepest quarter of moor edges
+const HGT = 0.082; // slope steep enough to matter — roughly the steepest quarter of moor edges
 
 export function startCombat(groupKeys: string[], isBoss: boolean): void {
   const [fx, fy] = DIRV[state.dir];

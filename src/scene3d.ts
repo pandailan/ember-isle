@@ -532,8 +532,8 @@ function buildWilds(x: number, y: number, h: number, elev = 0): void {
   let id: string;
   if (biome.id === "moor") { // height writes the vegetation: three bands of moor
     const gh = groundHAt(x + 0.5, y + 0.5);
-    id = gh > 0.17 ? (h % 3 === 0 ? "crag" : h % 7 === 2 ? "tallPine" : "boulderCluster") // bare heights
-      : gh < 0.055 ? (h % 4 === 0 ? "boulderCluster" : h % 9 === 4 ? "ruin" : "pineStand") // low marsh edge
+    id = gh > 0.31 ? (h % 3 === 0 ? "crag" : h % 7 === 2 ? "tallPine" : "boulderCluster") // bare heights
+      : gh < 0.1 ? (h % 4 === 0 ? "boulderCluster" : h % 9 === 4 ? "ruin" : "pineStand")   // low marsh edge
       : h % 11 === 5 ? "crag" : h % 9 === 4 ? "ruin" : "forestWall";                       // the forest belt
   } else {
     id = h % 11 === 5 ? "crag" : h % 13 === 7 ? "tallPine"
@@ -567,7 +567,7 @@ function buildGrass(map: string[], biome: Biome, mw: number, mh: number): void {
     if (map[y][x] !== ".") continue;
     const h = cellHash(x, y);
     const gh = groundHAt(x + 0.5, y + 0.5);
-    const high = biome.id === "moor" && gh > 0.17;
+    const high = biome.id === "moor" && gh > 0.31;
     const cellPer = high ? Math.max(2, (per / 3) | 0) : per;
     const cellHues = high ? dryHues : hues;
     for (let i = 0; i < cellPer; i++) { // small clumps, not lone needles

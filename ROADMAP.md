@@ -211,6 +211,15 @@
   marsh edges near the water. The summits you climb for automap reach are
   now visibly different country from the woods below them.
 
+- **The ground truly rolls** — the correction that mattered: relief itself,
+  not prop height. The moor's elevation amplitude nearly doubled (cove up
+  half again), so paths climb and drop visibly and hills read as hills on
+  the horizon; every height-coupled rule rescaled with it (automap vision
+  bands, the slope-combat threshold, mob scrabbling, vegetation bands).
+  The forest canopy was grounded at the same time — no more detached
+  foliage floating over the trail; the path-side tree now spreads one
+  attached bough over the way instead.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

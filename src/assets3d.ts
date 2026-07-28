@@ -310,17 +310,13 @@ export const ASSETS: Record<string, AssetFactory> = {
       b.scale.y = 0.7;
       p.group.add(b);
     }
-    for (let i = 0; i < 2; i++) {            // the canopy leans over the open side
-      const m = (h >> i) % 2 ? PALETTE.leaf : PALETTE.wildFoliage;
-      const r = 0.34 + ((h >> (i * 3)) % 4) * 0.05;
-      const c = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), m);
-      c.position.set(
-        p.x + 0.5 + ox * (0.38 + ((h >> i) % 3) * 0.09) + (((h >> (i + 4)) % 5) - 2) * 0.08,
-        1.9 + ((h >> (i + 2)) % 4) * 0.18,
-        p.z + 0.5 + oz * (0.38 + ((h >> (i + 1)) % 3) * 0.09) + (((h >> (i + 6)) % 5) - 2) * 0.08);
-      c.scale.y = 0.62;
-      p.group.add(c);
-      fx.sway(c, 0.012, c.position.x, c.position.z);
+    if (ox || oz) {                          // the path-side tree spreads a wide bough over the trail
+      const m = (h >> 2) % 2 ? PALETTE.leaf : PALETTE.wildFoliage;
+      const bough = new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.5, 7), m);
+      bough.position.set(p.x + 0.5 + ox * 0.34, 1.65 + (h % 3) * 0.14, p.z + 0.5 + oz * 0.34);
+      bough.rotation.y = (h >> 3) % 7;
+      p.group.add(bough);
+      fx.sway(bough, 0.01, bough.position.x, bough.position.z);
     }
   },
 
