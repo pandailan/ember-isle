@@ -188,6 +188,11 @@
   offshore where the isle once reached. The open sea rolls with a real
   three-wave swell, damped flat near the coast so the shallows stay calm.
 
+- **The surf** — whitecaps now roll in from the sea in staggered sets and
+  break on the waterline, faster and taller when the wind is up; a dark
+  wet-sand band follows the wandering waterline and breathes with the
+  tide; and gulls wheel over the offshore sea stacks all day.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
