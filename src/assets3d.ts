@@ -63,6 +63,8 @@ export const PALETTE = {
   ruin: new THREE.MeshStandardMaterial({color: 0x413e36, roughness: 0.97}),
   menhir: new THREE.MeshStandardMaterial({color: 0x262b22, roughness: 1}),
   wildFoliage: new THREE.MeshStandardMaterial({color: 0x16261a, roughness: 0.95}),
+  leaf: new THREE.MeshStandardMaterial({color: 0x263c20, roughness: 0.95}),
+  leafBright: new THREE.MeshStandardMaterial({color: 0x35502a, roughness: 0.95}),
   bone: new THREE.MeshStandardMaterial({color: 0xb8ad98, roughness: 0.9}),
   sack: new THREE.MeshStandardMaterial({color: 0x8a7a58, roughness: 0.95}),
   reed: new THREE.MeshStandardMaterial({color: 0x46562c, roughness: 0.95}),
@@ -155,6 +157,25 @@ export const ASSETS: Record<string, AssetFactory> = {
     }
     ASSETS.tuft({...p, hash: h >> 2});
     ASSETS.pebbles({...p, hash: h >> 4});
+  },
+
+  bush(p) { // a leafy shrub, the forest's near-ground layer
+    const h = p.hash;
+    const g2 = new THREE.Group();
+    const n = 2 + (h % 2);
+    for (let i = 0; i < n; i++) {
+      const m = (h >> i) % 2 ? PALETTE.leaf : PALETTE.leafBright;
+      const r = 0.13 + ((h >> (i * 2)) % 4) * 0.03;
+      const b = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 5), m);
+      b.position.set((((h >> i) % 5) - 2) * 0.06, r * 0.66 + i * 0.05, (((h >> (i + 2)) % 5) - 2) * 0.06);
+      b.scale.y = 0.72;
+      g2.add(b);
+    }
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.12, 5), PALETTE.wood);
+    stem.position.y = 0.05; g2.add(stem);
+    g2.position.set(p.x + 0.24 + ((p.hash >> 5) % 7) / 7 * 0.52, 0, p.z + 0.24 + ((p.hash >> 8) % 7) / 7 * 0.52);
+    p.group.add(g2);
+    fx.sway(g2, 0.014, g2.position.x, g2.position.z);
   },
 
   cairn(p) { // stacked stones: someone marked the way
@@ -258,6 +279,49 @@ export const ASSETS: Record<string, AssetFactory> = {
   exitLight(p) { // daylight spilling down the way out
     fx.flame(p.group, 0.5, 0.7, 0.5, "rgba(210,220,235,.5)", 0.6);
     fx.anchor(new THREE.Vector3(p.x + 0.5, 0.7, p.z + 0.5), 0xc8d4e8, 3, 4, 0.05);
+  },
+
+  forestWall(p) { // a cell of true forest: trunks, underbrush, and a canopy
+    const h = p.hash;                        // that leans out over the path
+    const [ox, oz] = p.faceDir ?? [0, 0];
+    for (let i = 0; i < 3; i++) {            // the trunks and their crowns
+      const tx = 0.2 + ((h >> (i * 3)) % 7) / 7 * 0.6;
+      const tz = 0.2 + ((h >> (i * 3 + 4)) % 7) / 7 * 0.6;
+      const tall = 1.7 + ((h >> i) % 5) * 0.24;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.055, tall * 0.5, 6), PALETTE.wood);
+      trunk.position.set(p.x + tx, tall * 0.25, p.z + tz);
+      p.group.add(trunk);
+      for (let t = 0; t < 3; t++) {
+        const k = t / 3;
+        const m = (h >> (i + t)) % 2 ? PALETTE.leaf : PALETTE.wildFoliage;
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.4 * (1 - k * 0.55), tall * 0.34, 7), m);
+        cone.position.set(p.x + tx, tall * (0.4 + k * 0.5), p.z + tz);
+        cone.rotation.y = (h >> (i + t)) % 7;
+        p.group.add(cone);
+        if (t === 2) fx.sway(cone, 0.016, p.x + tx, p.z + tz);
+      }
+    }
+    for (let i = 0; i < 4; i++) {            // underbrush chokes the gaps
+      const m = (h >> i) % 2 ? PALETTE.leaf : PALETTE.leafBright;
+      const r = 0.16 + ((h >> (i * 2 + 1)) % 4) * 0.04;
+      const b = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 5), m);
+      b.position.set(p.x + 0.15 + ((h >> (i * 2)) % 8) / 8 * 0.7, r * 0.6,
+                     p.z + 0.15 + ((h >> (i * 2 + 5)) % 8) / 8 * 0.7);
+      b.scale.y = 0.7;
+      p.group.add(b);
+    }
+    for (let i = 0; i < 2; i++) {            // the canopy leans over the open side
+      const m = (h >> i) % 2 ? PALETTE.leaf : PALETTE.wildFoliage;
+      const r = 0.34 + ((h >> (i * 3)) % 4) * 0.05;
+      const c = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), m);
+      c.position.set(
+        p.x + 0.5 + ox * (0.38 + ((h >> i) % 3) * 0.09) + (((h >> (i + 4)) % 5) - 2) * 0.08,
+        1.9 + ((h >> (i + 2)) % 4) * 0.18,
+        p.z + 0.5 + oz * (0.38 + ((h >> (i + 1)) % 3) * 0.09) + (((h >> (i + 6)) % 5) - 2) * 0.08);
+      c.scale.y = 0.62;
+      p.group.add(c);
+      fx.sway(c, 0.012, c.position.x, c.position.z);
+    }
   },
 
   fountain(p) { // a spring of cold, clear water

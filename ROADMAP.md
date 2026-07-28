@@ -193,6 +193,15 @@
   wet-sand band follows the wandering waterline and breathes with the
   tide; and gulls wheel over the offshore sea stacks all day.
 
+- **The moor becomes a forest** — after the Might & Magic X reference:
+  density means enclosure, not decoration. The moor's impassable cells are
+  true forest walls now (`forestWall`): three trunks with tiered crowns,
+  underbrush choking the gaps, and a canopy that leans out over the
+  adjacent path so the sky shows only in clearings. A new `bush` asset
+  gives the near-ground layer, and the grass doubled again into a carpet.
+  Paths read as carved through the woods; the cove keeps its open,
+  windswept strand for contrast.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

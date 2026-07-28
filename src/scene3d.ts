@@ -528,9 +528,14 @@ let placingX = 0; let placingY = 0; // the cell being furnished (for consumables
 /** Impassable wilds: pick which landmark or growth claims the cell. */
 function buildWilds(x: number, y: number, h: number, elev = 0): void {
   const g = new THREE.Group(); g.position.set(x, elev - 0.02, y);
-  const id = h % 11 === 5 ? "crag" : h % 13 === 7 ? "tallPine"
+  const biome = biomeFor(state.level);
+  const id = biome.id === "moor"
+    ? (h % 11 === 5 ? "crag" : h % 9 === 4 ? "ruin" : "forestWall") // the moor's walls are forest
+    : h % 11 === 5 ? "crag" : h % 13 === 7 ? "tallPine"
     : h % 7 === 3 ? "ruin" : h % 3 === 0 ? "pineStand" : "boulderCluster";
-  ASSETS[id]({group: g, x: 0, z: 0, hash: id === "ruin" ? h >> 1 : h, biome: biomeFor(state.level)});
+  const face = faceToOpen(MAPS[state.level], x, y);
+  ASSETS[id]({group: g, x: 0, z: 0, hash: id === "ruin" ? h >> 1 : h,
+    biome, faceDir: face ?? undefined});
   worldGroup.add(g);
 }
 
@@ -547,7 +552,7 @@ let grassMesh: THREE.InstancedMesh | null = null;
 let grassUniforms: {uTime: {value: number}; uWind: {value: number}} | null = null;
 function buildGrass(map: string[], biome: Biome, mw: number, mh: number): void {
   grassMesh = null; grassUniforms = null;
-  const per = biome.id === "moor" ? 6 : biome.id === "cove" ? 3 : 0;
+  const per = biome.id === "moor" ? 14 : biome.id === "cove" ? 3 : 0;
   if (!per) return;
   const spots: {x: number; z: number; s: number; c: number}[] = [];
   const hues = biome.id === "moor" ? [0x5a7838, 0x6b8a44, 0x4c6830] : [0x84805a, 0x948c64, 0x746e4a];
