@@ -21,6 +21,21 @@ actx.scale(DPR, DPR);
 const DIRV_A = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 const compass = new CompassRose($("compass-rose"));
 
+/* On wide layouts the automap lives docked in the right column and starts
+   open; on phones it returns to its viewport-corner overlay, closed. */
+const wideLayout = window.matchMedia("(min-width: 900px)");
+function placeAutomap(): void {
+  if (wideLayout.matches) {
+    $("side-map").appendChild(amap);
+    amap.classList.add("on");
+  } else {
+    view.parentElement?.appendChild(amap);
+    amap.classList.remove("on");
+  }
+}
+wideLayout.addEventListener("change", placeAutomap);
+placeAutomap();
+
 let webgl = false;
 let s3d: typeof import("./scene3d") | null = null;
 

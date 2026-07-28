@@ -36,12 +36,13 @@ export class CompassRose {
     this.face(0);
   }
 
-  /** Rotate the card so the given facing sits under the needle. */
+  /** Rotate the card so the given facing sits under the needle. The letters
+      counter-rotate via CSS (see .rose rules) so they stay upright. */
   face(dir: Dir): void {
     const target = -dir * 90;
     const delta = ((target - this.angle) % 360 + 540) % 360 - 180;
     this.angle += delta;
-    this.card.style.transform = `rotate(${this.angle}deg)`;
+    this.card.style.setProperty("--rot", `${this.angle}deg`);
     this.host.setAttribute("aria-label", `Facing ${DIRN[dir]}`);
   }
 }

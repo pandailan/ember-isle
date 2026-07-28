@@ -235,6 +235,16 @@
   readers. A dead-class sweep went with it — the stylesheet audit found the
   CSS otherwise clean (one unused rule removed).
 
+- **The flanks earn their keep** — the wide layout's empty spaces now work
+  for a living. Left: a Satchel panel (`src/satchel.ts`) with the purse and
+  potion count, a feed of the last five pickups (chest gold, landmark
+  hoards, combat spoils, trophies, sealed cards — each with its glyph), and
+  a landmarks-and-chests tally. Right: the automap docked and always open,
+  scaled to the column with crisp pixels, hidden while fighting so the
+  command panel takes its place; phones keep the corner-overlay toggle.
+  The compass letters also learned to counter-rotate, staying upright
+  while they orbit the card.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

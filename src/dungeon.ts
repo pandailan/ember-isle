@@ -14,6 +14,7 @@ import { view, amap, renderView, foeAtX } from "./render";
 import { net } from "./net";
 import { setScene, setWeatherAudio, setDaylight, sfx } from "./audio";
 import { phaseName, hourOf, WEATHER_MSGS, PHASE_MSGS } from "./daytime";
+import { noteLoot, clearLootFeed, renderSatchel } from "./satchel";
 import type { Weather } from "./types";
 
 const dungeonScene = () =>
@@ -71,6 +72,7 @@ export function updateHUD(): void {
   $("hud").innerHTML = `
     <span class="hudchip"><svg viewBox="0 0 10 10" width="11" height="11"><circle cx="5" cy="5" r="4" fill="#e0b24c"/><circle cx="5" cy="5" r="2.2" fill="#a3782c"/></svg>${state.gold}</span>
     <span class="hudchip"><svg viewBox="0 0 10 12" width="10" height="12"><rect x="3.4" y="0" width="3.2" height="3" fill="#8a7a52"/><path d="M3 3 h4 l1.5 3 v4.5 a1.5 1.5 0 0 1 -1.5 1.5 h-4 a1.5 1.5 0 0 1 -1.5 -1.5 v-4.5 z" fill="#c8502f"/></svg>${state.potions}</span>`;
+  renderSatchel();
 }
 
 export function enterDungeon(fresh: boolean): void {
@@ -87,6 +89,7 @@ export function enterDungeon(fresh: boolean): void {
     state.mobs[1] = spawnMobs(1, state.mobs[1]);
     state.mobs[2] = spawnMobs(2, state.mobs[2]);
     state.mobs[3] = spawnMobs(3, state.mobs[3]);
+    clearLootFeed();
     logLines = []; dlog("The Old Stair ends in torch-dark. The air tastes of cinders.");
   } else {
     logLines = []; dlog("You take up your torches where you left them.");
@@ -246,19 +249,21 @@ async function onEnterCell(raw: string): Promise<void> {
     const loot = state.level === 5 ? vaultLoot() : (CHESTS[key] || {gold: 30});
     state.opened.push(key);
     const got: string[] = [];
-    if (loot.gold) { state.gold += loot.gold; got.push(loot.gold + " gold"); }
-    if (loot.potions) { state.potions += loot.potions; got.push(loot.potions + " potion" + (loot.potions > 1 ? "s" : "")); }
+    if (loot.gold) { state.gold += loot.gold; got.push(loot.gold + " gold"); noteLoot("gold", `+${loot.gold} gold · chest`); }
+    if (loot.potions) { state.potions += loot.potions; got.push(loot.potions + " potion" + (loot.potions > 1 ? "s" : "")); noteLoot("potion", `+${loot.potions} potion${loot.potions > 1 ? "s" : ""} · chest`); }
     for (const [kind, ckey] of loot.cards ?? []) {
       state.binder.push(makeTCard(kind, ckey));
-      got.push(`a sealed card: ${kind === "relic" ? RELICS[ckey]?.n : EVENTS[ckey]?.n}`);
+      const cn = kind === "relic" ? RELICS[ckey]?.n : EVENTS[ckey]?.n;
+      got.push(`a sealed card: ${cn}`);
+      noteLoot("card", `Sealed card: ${cn}`);
     }
     const left: string[] = [];
     for (const id of loot.items ?? []) {
       const carrier = findCarrier(state.party, id);
-      if (carrier) { carrier.items.push(id); got.push(`${ITEMS[id].n} (${carrier.name})`); }
+      if (carrier) { carrier.items.push(id); got.push(`${ITEMS[id].n} (${carrier.name})`); noteLoot("item", `${ITEMS[id].n} → ${carrier.name}`); }
       else left.push(ITEMS[id].n);
     }
-    if (loot.charm) { state.charm = true; got.push("the Emberward Charm (DEF +2 for all)"); }
+    if (loot.charm) { state.charm = true; got.push("the Emberward Charm (DEF +2 for all)"); noteLoot("item", "The Emberward Charm"); }
     sfx("chest");
     dlog(`You pry open ${loot.note || "a chest"} — ${got.join(", ")}.`);
     if (left.length) dlog(`No room to carry: ${left.join(", ")}. It stays in the chest's shadow.`);
@@ -330,9 +335,10 @@ function visitLandmark(): void {
   } else if (lm === "barrow") {
     const gold = 60 + (h % 41);
     state.gold += gold;
+    noteLoot("gold", `+${gold} gold · barrow`);
     const got = [gold + " gold"];
     const carrier = findCarrier(state.party, "relic");
-    if (carrier) { carrier.items.push("relic"); got.push(`${ITEMS.relic.n} (${carrier.name})`); }
+    if (carrier) { carrier.items.push("relic"); got.push(`${ITEMS.relic.n} (${carrier.name})`); noteLoot("item", `${ITEMS.relic.n} → ${carrier.name}`); }
     sfx("chest");
     dlog(`You duck under the lintel. Grave-goods in the dark: ${got.join(", ")}.`);
     if ((h >> 4) % 2 === 0) {
@@ -344,11 +350,14 @@ function visitLandmark(): void {
   } else if (lm === "wreck") {
     const gold = 30 + (h % 31);
     state.gold += gold; state.potions += 2;
+    noteLoot("gold", `+${gold} gold · wreck`);
+    noteLoot("potion", "+2 potions · wreck");
     sfx("chest");
     dlog(`You pick through the hull's ribs — ${gold} gold in a rotted purse, and 2 stoppered potions.`);
   } else if (lm === "ruin") {
     const gold = 10 + (h % 21);
     state.gold += gold;
+    noteLoot("gold", `+${gold} gold · ruin`);
     sfx("tap");
     dlog(`You turn over the old stones. Someone's small hoard: ${gold} gold.`);
   }

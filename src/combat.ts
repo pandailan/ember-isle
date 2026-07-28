@@ -14,6 +14,7 @@ import { combatView, combatPop, foeLungeView } from "./render";
 import { $, sleep, rnd, ri } from "./util";
 import { askRemote, isRemoteSeat, clearRemoteMenu } from "./coop";
 import { setScene, sfx } from "./audio";
+import { noteLoot } from "./satchel";
 
 let combat: CombatState = null as unknown as CombatState;
 let fighting = false;
@@ -410,9 +411,11 @@ async function combatVictory(): Promise<void> {
     state.gold += gold - guestShare;
     state.guestGoldOwed = (state.guestGoldOwed ?? 0) + guestShare;
     clog(`Victory — ${gold} gold split with your companion, ${each} experience each.`);
+    noteLoot("gold", `+${gold - guestShare} gold · spoils (split)`);
   } else {
     state.gold += gold;
     clog(`Victory — ${gold} gold, ${each} experience each.`);
+    noteLoot("gold", `+${gold} gold · spoils`);
   }
   for (const m of alive()) {
     m.xp += each;
@@ -437,15 +440,17 @@ async function combatVictory(): Promise<void> {
     if (!drop || rnd() > drop[1]) continue;
     const it = ITEMS[drop[0]];
     const carrier = findCarrier(state.party, drop[0]);
-    if (carrier) { carrier.items.push(drop[0]); clog(`${carrier.name} takes the ${it.n.toLowerCase()} (${it.w} wt).`); }
+    if (carrier) { carrier.items.push(drop[0]); clog(`${carrier.name} takes the ${it.n.toLowerCase()} (${it.w} wt).`); noteLoot("item", `${it.n} → ${carrier.name}`); }
     else clog(`A ${it.n.toLowerCase()} is left behind — every back is full.`);
   }
-  if (rnd() < 0.22 && !combat.isBoss) { state.potions++; clog("Among the remains: a stoppered potion, intact."); }
+  if (rnd() < 0.22 && !combat.isBoss) { state.potions++; clog("Among the remains: a stoppered potion, intact."); noteLoot("potion", "+1 potion · remains"); }
   if (combat.isBoss) {
     state.bossDown = true; state.heart = true;
     clog("Vhal's crown gutters out. In the ash lies the HEART OF EMBER, already cooling.");
+    noteLoot("item", "The Heart of Ember");
     grantBossCard();
     clog("Beneath it, unburnt: a sealed card — a RITE OF RETURN.");
+    noteLoot("card", "Sealed card: Rite of Return");
     await sleep(1400);
     cmdMenu("", [{t: "Take the Heart and go on", v: 1, wide: true}]);
     await awaitChoice();
