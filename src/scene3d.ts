@@ -643,7 +643,7 @@ export function buildLevel(): void {
   starsMat = null; moonSpr = null; sunSpr = null; dimmables = []; swayers = []; shimmers = [];
   cloudMesh = null; cloudMat = null; gulls = [];
   lhBeacon = null; lhBeamMat = null; lhLampMat = null; lhGlow = null;
-  shoreFoams = [];
+  shoreFoams = []; breakers = []; seaStacks = [];
   for (const mv of mobViews) { if (mv.rig) scene.remove(mv.rig.group); scene.remove(mv.shadow); }
   mobViews = [];
 
@@ -889,6 +889,18 @@ export function buildLevel(): void {
     worldGroup.add(emberPoints);
   } else { emberPoints = null; emberData = null; }
 
+  if (town && seaStacks.length) { // gulls wheel over the stacks, crying at nothing
+    if (!gullTexA) { gullTexA = new THREE.CanvasTexture(gullFrame(true)); gullTexB = new THREE.CanvasTexture(gullFrame(false)); }
+    for (const st of seaStacks.slice(0, 3)) {
+      for (let i = 0; i < 2; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: gullTexA, transparent: true, opacity: 0, depthWrite: false}));
+        sp.scale.set(0.42, 0.24, 1);
+        worldGroup.add(sp);
+        gulls.push({sp, cx: st.x, cz: st.z, r: 0.8 + rnd() * 0.9, h: 1.5 + rnd() * 0.9,
+                    speed: 0.3 + rnd() * 0.16, phase: rnd() * 6.28});
+      }
+    }
+  }
   if (town) buildGrass(map, biome, mw, mh);
   buildSunLight(town, mw, mh);
   // everything solid casts and catches the sun; effects opt back out
@@ -914,6 +926,11 @@ function respawnEmber(i: number, mw: number, mh: number): void {
 
 /* the waterline wanders: a jittered sand lip and a foam ribbon that surges */
 let shoreFoams: {mesh: THREE.Mesh; nx: number; nz: number; phase: number; base: THREE.Vector3}[] = [];
+/* whitecaps that roll in from the sea and break on the waterline */
+let breakers: {mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; nx: number; nz: number;
+  phase: number; base: THREE.Vector3}[] = [];
+/* where the sea stacks stand, so gulls can wheel over them */
+let seaStacks: {x: number; z: number}[] = [];
 const shoreJit = (wx: number, wz: number) =>
   (((cellHash(Math.round(wx * 4) * 7 + 13, Math.round(wz * 4) * 11 + 5) >>> 2) % 100) / 100 - 0.5) * 0.42;
 
@@ -953,12 +970,19 @@ function shoreStrip(g: THREE.Group, x: number, y: number, dx: number, dy: number
 }
 
 function buildShoreEdge(g: THREE.Group, x: number, y: number, dx: number, dy: number): void {
-  const sandHue = biomeFor(state.level).id === "cove" ? 0x77684a : 0x3e3a2c;
-  const sand = new THREE.MeshStandardMaterial({color: sandHue, roughness: 0.98});
+  const cove = biomeFor(state.level).id === "cove";
+  const sand = new THREE.MeshStandardMaterial({color: cove ? 0x77684a : 0x3e3a2c, roughness: 0.98});
+  const wet = new THREE.MeshStandardMaterial({color: cove ? 0x4c4130 : 0x28251c, roughness: 0.6});
   shoreStrip(g, x, y, dx, dy, 0.5, -0.04, 0.05, 0.004, sand);          // the lip runs dry land into the water
-  const foam = shoreStrip(g, x, y, dx, dy, 0.06, 0.09, 0.032, 0.027, foamMat, true); // a thin line riding the waterline
-  shoreFoams.push({mesh: foam, nx: dx, nz: dy, phase: (cellHash(x, y) % 63) / 10,
-    base: foam.position.clone()});
+  const wetBand = shoreStrip(g, x, y, dx, dy, 0.17, -0.02, 0.052, 0.03, wet, true); // dark where the tide reaches
+  const foam = shoreStrip(g, x, y, dx, dy, 0.06, 0.09, 0.054, 0.03, foamMat, true); // a thin line riding the waterline
+  const ph = (cellHash(x, y) % 63) / 10;
+  shoreFoams.push({mesh: foam, nx: dx, nz: dy, phase: ph, base: foam.position.clone()});
+  shoreFoams.push({mesh: wetBand, nx: dx * 0.5, nz: dy * 0.5, phase: ph, base: wetBand.position.clone()});
+  const bMat = new THREE.MeshBasicMaterial({color: 0xe4f2f4, transparent: true, opacity: 0, depthWrite: false});
+  const breaker = shoreStrip(g, x, y, dx, dy, 0.05, 0.1, 0.036, 0.033, bMat, true);
+  breakers.push({mesh: breaker, mat: bMat, nx: dx, nz: dy,
+    phase: (cellHash(x * 3 + 1, y * 5 + 2) % 97) / 97, base: breaker.position.clone()});
 }
 
 function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
@@ -989,6 +1013,7 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
       const sg = new THREE.Group(); sg.position.set(0, -0.12, 0);
       ASSETS.crag({group: sg, x: -0.24, z: -0.24, hash: h2 >> 2, biome});
       g.add(sg);
+      seaStacks.push({x: x + 0.5, z: y + 0.5});
     }
   } else {
     const id = FEATURE_ASSET[ch];
@@ -1182,6 +1207,12 @@ export function frame(dt: number): void {
     for (const sf of shoreFoams) { // the tide breathes in and out
       const surge = Math.sin(animT * 0.85 + sf.phase) * 0.075;
       sf.mesh.position.set(sf.base.x + sf.nx * surge, sf.base.y, sf.base.z + sf.nz * surge);
+    }
+    for (const bk of breakers) { // whitecaps roll in and break on the sand
+      const p = (animT * 0.14 * (0.8 + windK * 0.3) + bk.phase) % 1;
+      const dist = (1 - p) * 0.85;
+      bk.mesh.position.set(bk.base.x - bk.nx * dist, bk.base.y, bk.base.z - bk.nz * dist);
+      bk.mat.opacity = Math.pow(Math.sin(p * Math.PI), 1.6) * (0.3 + windK * 0.1);
     }
   }
   // cloud shadows slide with the wind
