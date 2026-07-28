@@ -11,7 +11,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { MAPS, TOWN_DOORS, ENEMIES } from "./data";
 import { state, cellAt } from "./state";
 import { biomeFor, biomeTextures, biomeNormalMaps, biomeFloorTexture, type Biome } from "./biomes";
-import { ASSETS, FEATURE_ASSET, bindAssetFx } from "./assets3d";
+import { ASSETS, FEATURE_ASSET, PALETTE, bindAssetFx } from "./assets3d";
 import { net } from "./net";
 import { reduceMotion, rnd } from "./util";
 import { groundLevelAt, hasElevation, cellHash } from "./terrain";
@@ -297,7 +297,7 @@ function getWaterMats(): [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial
   }
   return waterMats;
 }
-const foamMat = new THREE.MeshBasicMaterial({color: 0xbfd8dc, transparent: true, opacity: 0.2, depthWrite: false});
+const foamMat = new THREE.MeshBasicMaterial({color: 0xcfe6e8, transparent: true, opacity: 0.24, depthWrite: false});
 
 /* ---------- door textures (facade + arch + hanging sign) ---------- */
 const doorTexCache: Record<string, THREE.CanvasTexture> = {};
@@ -528,7 +528,8 @@ let placingX = 0; let placingY = 0; // the cell being furnished (for consumables
 /** Impassable wilds: pick which landmark or growth claims the cell. */
 function buildWilds(x: number, y: number, h: number, elev = 0): void {
   const g = new THREE.Group(); g.position.set(x, elev - 0.02, y);
-  const id = h % 7 === 3 ? "ruin" : h % 3 === 0 ? "pineStand" : "boulderCluster";
+  const id = h % 11 === 5 ? "crag" : h % 13 === 7 ? "tallPine"
+    : h % 7 === 3 ? "ruin" : h % 3 === 0 ? "pineStand" : "boulderCluster";
   ASSETS[id]({group: g, x: 0, z: 0, hash: id === "ruin" ? h >> 1 : h, biome: biomeFor(state.level)});
   worldGroup.add(g);
 }
@@ -642,6 +643,7 @@ export function buildLevel(): void {
   starsMat = null; moonSpr = null; sunSpr = null; dimmables = []; swayers = []; shimmers = [];
   cloudMesh = null; cloudMat = null; gulls = [];
   lhBeacon = null; lhBeamMat = null; lhLampMat = null; lhGlow = null;
+  shoreFoams = [];
   for (const mv of mobViews) { if (mv.rig) scene.remove(mv.rig.group); scene.remove(mv.shadow); }
   mobViews = [];
 
@@ -697,8 +699,10 @@ export function buildLevel(): void {
         .replace("#include <common>", "#include <common>\nuniform float uT;")
         .replace("#include <begin_vertex>",
           `#include <begin_vertex>
-          transformed.z += sin(uT * 0.9 + position.x * 0.55) * 0.045
-                         + sin(uT * 1.4 + position.y * 0.8 + position.x * 0.3) * 0.03;`);
+          float swellD = smoothstep(7.0, 16.0, max(abs(position.x), abs(position.y)));
+          transformed.z += (sin(uT * 0.8 + position.x * 0.42) * 0.085
+                          + sin(uT * 1.3 + position.y * 0.66 + position.x * 0.3) * 0.055
+                          + sin(uT * 2.1 + position.y * 1.7) * 0.022) * swellD;`);
     };
     seaUniforms = su;
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(90, 90, 72, 72), seaMat);
@@ -908,6 +912,55 @@ function respawnEmber(i: number, mw: number, mh: number): void {
   emberData[i * 4 + 3] = emberMode === "drift" ? rnd() * 6.28 : 0.12 + rnd() * 0.25;
 }
 
+/* the waterline wanders: a jittered sand lip and a foam ribbon that surges */
+let shoreFoams: {mesh: THREE.Mesh; nx: number; nz: number; phase: number; base: THREE.Vector3}[] = [];
+const shoreJit = (wx: number, wz: number) =>
+  (((cellHash(Math.round(wx * 4) * 7 + 13, Math.round(wz * 4) * 11 + 5) >>> 2) % 100) / 100 - 0.5) * 0.42;
+
+function shoreStrip(g: THREE.Group, x: number, y: number, dx: number, dy: number,
+    inner: number, outer: number, yIn: number, yOut: number, mat: THREE.Material,
+    jitBoth = false): THREE.Mesh {
+  // strip along the edge between water cell (x,y) and land neighbor (x+dx,y+dy);
+  // the seaward row wanders by world-keyed noise so neighboring cells agree
+  const segs = 8;
+  const ex = x + 0.5 + dx * 0.5, ez = y + 0.5 + dy * 0.5;   // edge centre (world)
+  const tx = dy !== 0 ? 1 : 0, tz = dx !== 0 ? 1 : 0;       // tangent
+  const pos = new Float32Array((segs + 1) * 2 * 3);
+  for (let i = 0; i <= segs; i++) {
+    const f = i / segs - 0.5;
+    const wx = ex + tx * f, wz = ez + tz * f;
+    const j = shoreJit(wx, wz);
+    const o = (pi: number, ox: number, oy: number, oz: number) => {
+      pos[pi * 3] = ox - (x + 0.5); pos[pi * 3 + 1] = oy; pos[pi * 3 + 2] = oz - (y + 0.5);
+    };
+    const ji = jitBoth ? j : 0; // a ribbon follows the waterline with both edges
+    o(i * 2, wx + dx * (inner - ji), yIn, wz + dy * (inner - ji));      // landward row
+    o(i * 2 + 1, wx - dx * (outer + j), yOut, wz - dy * (outer + j));   // seaward row, wandering
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < segs; i++) {
+    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+    idx.push(a, b, c, b, d, c);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0.5, 0, 0.5); // the parent group already stands at the cell
+  g.add(mesh);
+  return mesh;
+}
+
+function buildShoreEdge(g: THREE.Group, x: number, y: number, dx: number, dy: number): void {
+  const sandHue = biomeFor(state.level).id === "cove" ? 0x77684a : 0x3e3a2c;
+  const sand = new THREE.MeshStandardMaterial({color: sandHue, roughness: 0.98});
+  shoreStrip(g, x, y, dx, dy, 0.5, -0.04, 0.05, 0.004, sand);          // the lip runs dry land into the water
+  const foam = shoreStrip(g, x, y, dx, dy, 0.06, 0.09, 0.032, 0.027, foamMat, true); // a thin line riding the waterline
+  shoreFoams.push({mesh: foam, nx: dx, nz: dy, phase: (cellHash(x, y) % 63) / 10,
+    base: foam.position.clone()});
+}
+
 function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
   const elev = groundHAt(x + 0.5, y + 0.5);
   const g = new THREE.Group();
@@ -918,13 +971,24 @@ function buildFeature(ch: string, x: number, y: number, biome: Biome): void {
     tile.rotation.x = -Math.PI / 2; tile.position.set(cx, 0.02, cz);
     g.add(tile);
     const map = MAPS[state.level];
+    const h2 = cellHash(x, y);
+    let coastal = false;
     for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as [number, number][]) {
       const n = map[y + dy]?.[x + dx];
       if (n === undefined || n === "~") continue;
-      const foam = new THREE.Mesh(new THREE.PlaneGeometry(dx ? 0.09 : 1, dx ? 1 : 0.09), foamMat);
-      foam.rotation.x = -Math.PI / 2;
-      foam.position.set(cx + dx * 0.455, 0.028, cz + dy * 0.455);
-      g.add(foam);
+      coastal = true;
+      buildShoreEdge(g, x, y, dx, dy);
+    }
+    if (coastal && h2 % 5 === 2) { // a rock the tide never quite covers
+      const rk = new THREE.Mesh(new THREE.DodecahedronGeometry(0.11 + (h2 % 3) * 0.03, 0), PALETTE.boulder);
+      rk.position.set(0.3 + ((h2 >> 3) % 7) / 7 * 0.4, 0.015, 0.3 + ((h2 >> 6) % 7) / 7 * 0.4);
+      rk.scale.y = 0.55; rk.rotation.y = h2 % 7;
+      g.add(rk);
+    }
+    if (!coastal && h2 % 23 === 7) { // a sea stack, standing where the isle once reached
+      const sg = new THREE.Group(); sg.position.set(0, -0.12, 0);
+      ASSETS.crag({group: sg, x: -0.24, z: -0.24, hash: h2 >> 2, biome});
+      g.add(sg);
     }
   } else {
     const id = FEATURE_ASSET[ch];
@@ -1114,7 +1178,11 @@ export function frame(dt: number): void {
       sw.o.rotation.z = sw.base + sw.amp * wave * gust;
     }
     for (const sh of shimmers) sh.m.emissiveIntensity = sh.base * (0.75 + 0.35 * Math.sin(animT * 2.2 + sh.phase));
-    foamMat.opacity = 0.16 + 0.05 * Math.sin(animT * 1.3);
+    foamMat.opacity = 0.26 + 0.11 * Math.sin(animT * 1.3);
+    for (const sf of shoreFoams) { // the tide breathes in and out
+      const surge = Math.sin(animT * 0.85 + sf.phase) * 0.075;
+      sf.mesh.position.set(sf.base.x + sf.nx * surge, sf.base.y, sf.base.z + sf.nz * surge);
+    }
   }
   // cloud shadows slide with the wind
   if (cloudMat && cloudTex) {

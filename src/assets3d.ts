@@ -208,6 +208,31 @@ export const ASSETS: Record<string, AssetFactory> = {
 
   crack() { /* engraved in the floor texture's spirit — skipped in 3D */ },
 
+  crag(p) { // a rock formation with its head in the wind
+    const h = p.hash;
+    const cx = p.x + 0.72, cz = p.z + 0.72; // it keeps to its corner of the cell
+    const tall = 1.5 + (h % 5) * 0.22;
+    let y = 0;
+    const chunks = 4 + (h % 2);
+    for (let i = 0; i < chunks; i++) {
+      const k = i / chunks;
+      const r = 0.3 * (1 - k * 0.62) + ((h >> i) % 3) * 0.02;
+      const hh = tall / chunks * (0.9 + ((h >> (i + 2)) % 3) * 0.12);
+      const c = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), PALETTE.boulder);
+      c.position.set(cx + (((h >> i) % 5) - 2) * 0.035, y + hh * 0.4, cz + (((h >> (i + 3)) % 5) - 2) * 0.035);
+      c.scale.y = hh / r * 0.55;
+      c.rotation.set(((h >> i) % 5 - 2) * 0.05, (h >> i) % 7, ((h >> (i + 1)) % 5 - 2) * 0.06);
+      p.group.add(c);
+      y += hh * 0.72;
+    }
+    for (let i = 0; i < 3; i++) { // scree at its feet
+      const s = new THREE.Mesh(new THREE.DodecahedronGeometry(0.07 + ((h >> i) % 3) * 0.02, 0), PALETTE.boulder);
+      s.position.set(p.x + 0.25 + ((h >> (i * 2)) % 7) / 7 * 0.5, 0.05, p.z + 0.25 + ((h >> (i * 2 + 3)) % 7) / 7 * 0.5);
+      s.rotation.y = (h >> i) % 7;
+      p.group.add(s);
+    }
+  },
+
   crate(p) { // a crate and a barrel, dockside clutter
     const box = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), PALETTE.wood);
     box.position.set(p.x + 0.76, 0.1, p.z + 0.26); box.rotation.y = (p.hash % 7) / 7;
@@ -519,6 +544,25 @@ export const ASSETS: Record<string, AssetFactory> = {
     const altar = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.05, 8), PALETTE.menhir);
     altar.position.set(p.x + 0.5, 0.025, p.z + 0.5);
     p.group.add(altar);
+  },
+
+  tallPine(p) { // a lone pine grown far above its neighbors
+    const h = p.hash;
+    const cx = p.x + 0.74, cz = p.z + 0.74;
+    const tall = 2.1 + (h % 4) * 0.28;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.06, tall * 0.42, 6), PALETTE.wood);
+    trunk.position.set(cx, tall * 0.21, cz);
+    p.group.add(trunk);
+    const tiers = 4 + (h % 2);
+    for (let i = 0; i < tiers; i++) {
+      const k = i / tiers;
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.42 * (1 - k * 0.66), tall * 0.3, 7), PALETTE.wildFoliage);
+      cone.position.set(cx, tall * (0.32 + k * 0.58), cz);
+      cone.rotation.y = (h >> i) % 7;
+      p.group.add(cone);
+      fx.sway(cone, 0.012 + k * 0.01, cx, cz);
+    }
   },
 
   torch(p) { // wall-bracket fire

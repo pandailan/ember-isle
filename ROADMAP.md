@@ -178,6 +178,16 @@
   even when unchanged, so a single lost packet (like the one carrying a
   fight's start) can never strand the companion's mirror.
 
+- **A taller isle, a truer coast** — two new canonical assets give the wilds
+  vertical scale: lone pines grown far above their neighbors and crag spires
+  of stacked leaning rock, seeded on open ground and mixed into the
+  impassable thickets. The shoreline stopped being a straight line: a
+  noise-jittered sand lip wanders along every coast (continuous across
+  cells), a thin foam ribbon rides the waterline and surges in and out with
+  the tide, half-sunk rocks break the shallows, and rare sea stacks stand
+  offshore where the isle once reached. The open sea rolls with a real
+  three-wave swell, damped flat near the coast so the shallows stay calm.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV
