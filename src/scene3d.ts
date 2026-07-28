@@ -529,10 +529,16 @@ let placingX = 0; let placingY = 0; // the cell being furnished (for consumables
 function buildWilds(x: number, y: number, h: number, elev = 0): void {
   const g = new THREE.Group(); g.position.set(x, elev - 0.02, y);
   const biome = biomeFor(state.level);
-  const id = biome.id === "moor"
-    ? (h % 11 === 5 ? "crag" : h % 9 === 4 ? "ruin" : "forestWall") // the moor's walls are forest
-    : h % 11 === 5 ? "crag" : h % 13 === 7 ? "tallPine"
-    : h % 7 === 3 ? "ruin" : h % 3 === 0 ? "pineStand" : "boulderCluster";
+  let id: string;
+  if (biome.id === "moor") { // height writes the vegetation: three bands of moor
+    const gh = groundHAt(x + 0.5, y + 0.5);
+    id = gh > 0.17 ? (h % 3 === 0 ? "crag" : h % 7 === 2 ? "tallPine" : "boulderCluster") // bare heights
+      : gh < 0.055 ? (h % 4 === 0 ? "boulderCluster" : h % 9 === 4 ? "ruin" : "pineStand") // low marsh edge
+      : h % 11 === 5 ? "crag" : h % 9 === 4 ? "ruin" : "forestWall";                       // the forest belt
+  } else {
+    id = h % 11 === 5 ? "crag" : h % 13 === 7 ? "tallPine"
+      : h % 7 === 3 ? "ruin" : h % 3 === 0 ? "pineStand" : "boulderCluster";
+  }
   const face = faceToOpen(MAPS[state.level], x, y);
   ASSETS[id]({group: g, x: 0, z: 0, hash: id === "ruin" ? h >> 1 : h,
     biome, faceDir: face ?? undefined});
@@ -556,15 +562,20 @@ function buildGrass(map: string[], biome: Biome, mw: number, mh: number): void {
   if (!per) return;
   const spots: {x: number; z: number; s: number; c: number}[] = [];
   const hues = biome.id === "moor" ? [0x5a7838, 0x6b8a44, 0x4c6830] : [0x84805a, 0x948c64, 0x746e4a];
+  const dryHues = [0x6e6a3c, 0x7c7448, 0x5e5c34]; // heights wear late-summer straw
   for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
     if (map[y][x] !== ".") continue;
     const h = cellHash(x, y);
-    for (let i = 0; i < per; i++) { // small clumps, not lone needles
+    const gh = groundHAt(x + 0.5, y + 0.5);
+    const high = biome.id === "moor" && gh > 0.17;
+    const cellPer = high ? Math.max(2, (per / 3) | 0) : per;
+    const cellHues = high ? dryHues : hues;
+    for (let i = 0; i < cellPer; i++) { // small clumps, not lone needles
       const hx = (h >> (i * 3)) % 97, hz = (h >> (i * 3 + 5)) % 89;
       const cx2 = x + 0.08 + (hx / 97) * 0.84, cz2 = y + 0.08 + (hz / 89) * 0.84;
       for (let b = 0; b < 3; b++) {
         spots.push({x: cx2 + (((h >> (b + i)) % 5) - 2) * 0.016, z: cz2 + (((h >> (b + i + 2)) % 5) - 2) * 0.016,
-          s: 0.6 + ((h >> (b * 2 + i)) % 7) / 7 * 0.7, c: hues[(h >> (b + i * 2)) % hues.length]});
+          s: 0.6 + ((h >> (b * 2 + i)) % 7) / 7 * 0.7, c: cellHues[(h >> (b + i * 2)) % cellHues.length]});
       }
     }
   }

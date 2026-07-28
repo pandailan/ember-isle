@@ -202,6 +202,15 @@
   Paths read as carved through the woods; the cove keeps its open,
   windswept strand for contrast.
 
+- **Flanked UI & height-banded moor** — on wide screens the interface holds
+  both sides of a wide central view: log, party, and the movement diamond
+  left; location, combat commands, and the action arc right. And elevation
+  now writes the vegetation in three bands, keeping real open spaces: bare
+  heights of crag, dry straw grass, and lone pines with long views; the
+  forest belt at mid-height with its canopy over the paths; and low open
+  marsh edges near the water. The summits you climb for automap reach are
+  now visibly different country from the woods below them.
+
 ## Next
 
 - **Phase 4 — server ledger** *(needs a free Cloudflare account)*: Worker + KV

@@ -144,16 +144,21 @@
   #view{position:absolute; inset:0; display:block; width:100%; height:100%; touch-action:none;}
   #scr-dungeon .compass, #scr-dungeon #log, #scr-dungeon .plaques,
   #scr-dungeon #combat-panel, #scr-dungeon .controls{flex:none;}
-  /* wide screens (iPad landscape, PC): the view fills the left, everything else is a sidebar */
+  /* wide screens (iPad landscape, PC): the view holds the centre, the ui flanks
+     both sides — log, party, and movement left; compass, commands, actions right */
   @media (min-width: 900px){
-    #scr-dungeon.on{display:grid; grid-template-columns:minmax(0,1fr) 350px;
-      grid-template-rows:auto auto minmax(0,1fr) auto auto; gap:10px 14px;}
-    #scr-dungeon .viewwrap{grid-column:1; grid-row:1/6; height:100%; min-height:0;}
-    #scr-dungeon .compass{grid-column:2; grid-row:1;}
-    #scr-dungeon #log{grid-column:2; grid-row:2;}
-    #scr-dungeon .plaques{grid-column:2; grid-row:3; grid-template-columns:1fr 1fr; align-content:start;}
-    #scr-dungeon #combat-panel{grid-column:2; grid-row:4; min-height:0; overflow-y:auto;}
-    #scr-dungeon .controls{grid-column:2; grid-row:5;}
+    #scr-dungeon.on{display:grid; grid-template-columns:225px minmax(0,1fr) 210px;
+      grid-template-rows:auto minmax(0,1fr) auto; gap:10px 12px;}
+    #scr-dungeon .viewwrap{grid-column:2; grid-row:1/4; height:100%; min-height:0;}
+    #scr-dungeon #log{grid-column:1; grid-row:1;}
+    #scr-dungeon .plaques{grid-column:1; grid-row:2; grid-template-columns:1fr 1fr; align-content:start;}
+    #scr-dungeon .compass{grid-column:3; grid-row:1; flex-direction:column; gap:2px; align-items:flex-end;}
+    #scr-dungeon #combat-panel{grid-column:3; grid-row:2; min-height:0; overflow-y:auto; align-self:start;}
+    #scr-dungeon .controls{display:contents;}
+    #scr-dungeon .movepad{grid-column:1; grid-row:3; align-self:end;
+      grid-template-columns:repeat(3,minmax(48px,64px));}
+    #scr-dungeon .arc{grid-column:3; grid-row:3; align-self:end; justify-self:end;}
+    body.fighting #scr-dungeon .movepad, body.fighting #scr-dungeon .arc{display:none;}
   }
   /* short screens: tighter thumbs so nothing slips below the fold */
   @media (max-height: 720px){
